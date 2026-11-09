@@ -1,93 +1,95 @@
 # Web App Typst
 
-<!-- OSPO-managed README | Generated: 2026-04-16 | v2 -->
+Typst editor for ownCloud Infinite Scale.
+Live preview. PDF export. Runs in the browser. No server needed.
 
-[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE) [![ownCloud OSPO](https://img.shields.io/badge/OSPO-ownCloud-blue)](https://kiteworks.com/opensource) [![Docker Hub](https://img.shields.io/docker/pulls/owncloud)](https://hub.docker.com/r/owncloud/ocis)
+## Install from release
 
-Web App Skeleton provides a complete starter template for building custom web apps and extensions for ownCloud Infinite Scale. It includes a pre-configured development environment with Docker Compose, Vite build tooling, unit testing with Vitest, and a working example extension -- giving developers everything they need to quickly scaffold and develop new oCIS web applications.
-
-## Part of oCIS
-
-This repository is part of the [ownCloud Infinite Scale (oCIS)](https://github.com/owncloud/ocis) developer ecosystem. It serves as the official starting point for third-party extension development, integrating with the [ownCloud Web](https://github.com/owncloud/web) extension system.
-
-As a template repository, extensions scaffolded from this skeleton can be bundled into an oCIS deployment image once developed.
-
-## Getting Started
-
-Follow the steps below to scaffold and develop a new oCIS web application.
-
-### Prerequisites
-
-- [Docker](https://www.docker.com/) and [Docker Compose](https://docs.docker.com/compose/)
-- [pnpm](https://pnpm.io/installation) (check `packageManager` field in `package.json` for the correct version)
-
-### Development Environment
+Grab `typst-x.y.z.zip` from Releases.
+Unzip it in your oCIS apps folder.
+That's whatever `WEB_ASSET_APPS_PATH` points to.
 
 ```bash
-git clone https://github.com/owncloud/web-app-skeleton.git
-cd web-app-skeleton
-pnpm install && pnpm build:w
+unzip typst-x.y.z.zip -d /var/lib/ocis/apps/
 ```
 
+You get `apps/typst/`. 
+Now do the CSP thing below.
+
+## Build from source
+
+Need Node 24 and pnpm. Corepack picks the right pnpm.
+Need internet. Fonts get downloaded during build.
+
+```bash
+git clone <this repo>
+cd web-app-typst
+corepack enable
+pnpm install
+pnpm build
+```
+
+Output is `dist/`.
+Copy it to your oCIS apps folder as `typst`.
+
+```bash
+cp -r dist /var/lib/ocis/apps/typst
+```
+
+Now do the CSP thing below.
+
+## CSP thing
+
+Edit your CSP file (`PROXY_CSP_CONFIG_FILE_LOCATION`).
+No CSP file yet? Copy `dev/docker/ocis/csp.yaml`.
+Add these two lines:
+
+```yaml
+  connect-src:
+    - 'https://packages.typst.org/'
+  script-src:
+    - '''wasm-unsafe-eval'''
+```
+
+Restart oCIS.
+
+Open a `.typ` file.
+
+## Dev
+
 Add to `/etc/hosts`:
+
 ```
 127.0.0.1 host.docker.internal
 ```
 
-Start the development server:
+Then:
+
 ```bash
+pnpm install
+pnpm build:w
 docker compose up
 ```
 
-Open [https://host.docker.internal:9200](https://host.docker.internal:9200) (default login: admin/admin).
+Go to https://host.docker.internal:9200. Login admin/admin.
 
-### Customize Your App
+## Notes
 
-Rename `skeleton` to your app name in:
-- `package.json`
-- `vite.config.ts`
-- `dev/docker/ocis/apps.yaml`
-- `src/index.ts`
-- `tests/unit/App.spec.ts`
+First load is big. About 11 MB compiler, 8 MB fonts. Cached after.
+Imports from the same folder work. Subfolders too, 3 levels.
+`@preview` packages work.
+`../` imports don't.
+Custom fonts don't.
 
-### Testing
-
-```bash
-pnpm test:unit             # Run unit tests (Vitest)
-```
-
-### Production Build
+## Tests
 
 ```bash
-pnpm build                 # Build for production (output in dist/)
+pnpm test:unit
 ```
-
-## Documentation
-
-- [Web Extension System Documentation](https://owncloud.dev/clients/web/extension-system/)
-- [Web App Deployment Guide](https://owncloud.dev/services/web/#web-apps)
-- [Web Developer Documentation](https://owncloud.dev/clients/web/)
-- [awesome-ocis Publishing Guide](https://github.com/owncloud/awesome-ocis/tree/main/webApps)
-
-## Community & Support
-
-**[Star](https://github.com/owncloud/web-app-skeleton)** this repo and **Watch** for release notifications!
-
-- [ownCloud Website](https://owncloud.com)
-- [Community Discussions](https://github.com/orgs/owncloud/discussions)
-- [Matrix Chat](https://app.element.io/#/room/#owncloud:matrix.org)
-- [Documentation](https://doc.owncloud.com)
-- [Enterprise Support](https://owncloud.com/contact-us/)
-- [OSPO Home](https://kiteworks.com/opensource)
-
-## Contributing
-
-We welcome contributions! Please read the [Contributing Guidelines](CONTRIBUTING.md)
-and our [Code of Conduct](CODE_OF_CONDUCT.md) before getting started.
-
-
-
 
 ## License
 
-This project is licensed under the [Apache-2.0](LICENSE).
+Apache-2.0. Started from [owncloud/web-app-skeleton](https://github.com/owncloud/web-app-skeleton).
+
+Bundled stuff has its own licenses. See `THIRD-PARTY-NOTICES.txt` in the build.
+License texts live in `licenses/`.

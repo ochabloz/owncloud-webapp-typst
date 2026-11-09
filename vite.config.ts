@@ -1,5 +1,6 @@
 import { defineConfig } from '@ownclouders/extension-sdk'
 import type { Plugin } from 'vite'
+import { thirdPartyNotices } from './scripts/thirdPartyNotices'
 
 // typst.ts evaluates strings as code in a few places, which would force admins
 // to allow 'unsafe-eval' in the oCIS CSP (on top of 'wasm-unsafe-eval'):
@@ -96,7 +97,7 @@ export default defineConfig({
   // relative asset URLs: the wasm modules and fonts are resolved against the
   // app's own location (/assets/apps/typst/ in oCIS) instead of the host root
   base: './',
-  plugins: [typstCspSafe()],
+  plugins: [typstCspSafe(), thirdPartyNotices()],
   server: {
     port: 9224
   },

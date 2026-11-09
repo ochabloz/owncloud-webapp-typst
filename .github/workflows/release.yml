@@ -37,12 +37,12 @@ jobs:
       - name: Package
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
-          mkdir -p assets/skeleton/
-          cp -R .vscode dev public src tests assets/skeleton/
-          cp .editorconfig eslint.config.js .gitignore .npmrc .prettierrc.json docker-compose.yml LICENSE package.json pnpm-lock.yaml README.md tsconfig.json vite.config.ts assets/skeleton/
-          cd assets/
-          zip -r "skeleton-${VERSION}.zip" skeleton/
-          rm -rf skeleton/
+          test -f dist/THIRD-PARTY-NOTICES.txt
+          mkdir -p assets/
+          cp -R dist typst
+          cp LICENSE typst/
+          zip -r "assets/typst-${VERSION}.zip" typst/
+          rm -rf typst/
 
       - name: Generate checksums
         run: |
