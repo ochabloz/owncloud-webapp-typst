@@ -1,0 +1,43 @@
+# oCIS default CSP plus what the Typst app needs:
+# - 'wasm-unsafe-eval' lets the browser instantiate the Typst compiler/renderer wasm
+# - packages.typst.org serves `#import "@preview/..."` packages
+directives:
+  child-src:
+    - "'self'"
+  connect-src:
+    - "'self'"
+    - 'blob:'
+    - 'https://raw.githubusercontent.com/owncloud/awesome-ocis/'
+    - 'https://marketplace.owncloud.com/'
+    - 'https://packages.typst.org/'
+  default-src:
+    - "'none'"
+  font-src:
+    - "'self'"
+    - 'data:'
+  frame-ancestors:
+    - "'self'"
+  frame-src:
+    - "'self'"
+    - 'blob:'
+    - 'https://embed.diagrams.net/'
+  img-src:
+    - "'self'"
+    - 'data:'
+    - 'blob:'
+    - 'https://raw.githubusercontent.com/owncloud/awesome-ocis/'
+    - 'https://marketplace.owncloud.com/'
+  manifest-src:
+    - "'self'"
+  media-src:
+    - "'self'"
+  object-src:
+    - "'self'"
+    - 'blob:'
+  script-src:
+    - "'self'"
+    - "'unsafe-inline'"
+    - "'wasm-unsafe-eval'"
+  style-src:
+    - "'self'"
+    - "'unsafe-inline'"

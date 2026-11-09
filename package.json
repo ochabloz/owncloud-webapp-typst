@@ -1,20 +1,25 @@
 {
-  "name": "web-app-skeleton",
+  "name": "web-app-typst",
   "version": "0.2.0",
-  "description": "All the bits and pieces for an easy start to build your own web apps and extensions for ownCloud Infinite Scale.",
+  "description": "Typst editor with live preview and PDF export for ownCloud Infinite Scale.",
   "license": "Apache-2.0",
-  "author": "ownCloud",
-  "private": true,
-  "homepage": "https://github.com/owncloud/web-app-skeleton",
   "type": "module",
   "scripts": {
-    "build": "pnpm vite build",
-    "build:w": "pnpm vite build --watch --mode development",
+    "build": "pnpm fonts && pnpm vite build",
+    "build:w": "pnpm fonts && pnpm vite build --watch --mode development",
     "check:types": "vue-tsc --noEmit",
     "lint": "eslint 'src/**/*.{js,ts,vue}' --color",
-    "test:unit": "NODE_OPTIONS=--unhandled-rejections=throw vitest"
+    "test:unit": "NODE_OPTIONS=--unhandled-rejections=throw vitest",
+    "fonts": "node scripts/fetch-fonts.mjs"
   },
   "devDependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@myriaddreamin/typst-ts-renderer": "^0.7.0",
+    "@myriaddreamin/typst-ts-web-compiler": "^0.7.0",
+    "@myriaddreamin/typst.ts": "^0.7.0",
     "@ownclouders/eslint-config": "12.5.1",
     "@ownclouders/extension-sdk": "12.5.1",
     "@ownclouders/prettier-config": "0.0.2",

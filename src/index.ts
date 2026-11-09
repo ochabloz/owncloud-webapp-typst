@@ -1,62 +1,60 @@
 import {
-  defineWebApplication,
-  ApplicationSetupOptions,
-  Extension,
-  AppMenuItemExtension
+  AppWrapperRoute,
+  ApplicationFileExtension,
+  ApplicationInformation,
+  defineWebApplication
 } from '@ownclouders/web-pkg'
-import { urlJoin } from '@ownclouders/web-client'
 import { RouteRecordRaw } from 'vue-router'
-import { computed } from 'vue'
 import { useGettext } from 'vue3-gettext'
+import TypstEditor from './App.vue'
 
 export default defineWebApplication({
-  setup(args) {
+  setup() {
     const { $gettext } = useGettext()
 
-    const appInfo = {
-      id: 'skeleton',
-      name: $gettext('Skeleton'),
-      icon: 'cup',
-      color: '#622a0f'
-    }
+    const appId = 'typst'
 
-    const routes: RouteRecordRaw[] = [
+    // registers .typ files to open in this app and adds "New > Typst document"
+    // to the files app's create menu
+    const typstFileLabel = () => $gettext('Typst document')
+    const fileExtensions: ApplicationFileExtension[] = [
       {
-        path: '/',
-        redirect: `/${appInfo.id}/hello`
-      },
-      {
-        path: '/hello',
-        name: 'hello',
-        component: () => import('./views/Hello.vue'),
-        meta: {
-          authContext: 'user',
-          title: $gettext('Hello')
+        extension: 'typ',
+        label: typstFileLabel,
+        newFileMenu: {
+          menuTitle: typstFileLabel
         }
       }
     ]
 
-    const extensions = ({ applicationConfig }: ApplicationSetupOptions) => {
-      return computed<Extension[]>(() => {
-        const menuItems: AppMenuItemExtension[] = [
-          {
-            // registers a menu item for the app switcher
-            id: `app.${appInfo.id}.menuItem`,
-            type: 'appMenuItem',
-            label: () => appInfo.name,
-            color: appInfo.color,
-            icon: appInfo.icon,
-            path: urlJoin(appInfo.id)
-          }
-        ]
-        return [...menuItems]
-      })
+    const routes: RouteRecordRaw[] = [
+      {
+        path: '/:driveAliasAndItem(.*)?',
+        component: AppWrapperRoute(TypstEditor, {
+          applicationId: appId
+        }),
+        // must equal the app id: the files app resolves editor routes by `<appId>-<appId>`
+        name: appId,
+        meta: {
+          authContext: 'hybrid',
+          title: $gettext('Typst'),
+          patchCleanPath: true
+        }
+      }
+    ]
+
+    const appInfo: ApplicationInformation = {
+      name: $gettext('Typst'),
+      id: appId,
+      icon: 'file-text',
+      color: '#239dad',
+      defaultExtension: 'typ',
+      extensions: fileExtensions
     }
 
     return {
       appInfo,
-      routes,
-      extensions: extensions(args)
+      routes
     }
   }
 })
