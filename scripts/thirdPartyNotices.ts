@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
-import type { Plugin } from 'vite'
+import type { Plugin, Rollup } from 'vite'
 
 // Emits dist/THIRD-PARTY-NOTICES.txt with the license of everything that ends
 // up in the bundle: npm packages (taken from the modules rollup actually
@@ -79,65 +79,93 @@ const findLicenseText = (dir: string) => {
 const section = (title: string, body: string) =>
   `${'='.repeat(80)}\n${title}\n${'='.repeat(80)}\n\n${body}\n`
 
-export const thirdPartyNotices = (): Plugin => ({
-  name: 'third-party-notices',
-  apply: 'build',
-  generateBundle(_options, bundle) {
-    const packages = new Map<string, PackageInfo>()
-    const fonts = new Set<string>()
-    for (const output of Object.values(bundle)) {
-      if (output.type !== 'chunk') {
+const collectModules = (
+  bundle: Rollup.OutputBundle,
+  packages: Map<string, PackageInfo>,
+  fonts: Set<string>
+) => {
+  for (const output of Object.values(bundle)) {
+    if (output.type !== 'chunk') {
+      continue
+    }
+    for (const [id, { renderedLength }] of Object.entries(output.modules)) {
+      if (!renderedLength) {
         continue
       }
-      for (const [id, { renderedLength }] of Object.entries(output.modules)) {
-        if (!renderedLength) {
-          continue
-        }
-        const pkg = findPackage(id)
-        if (pkg) {
-          packages.set(`${pkg.name}@${pkg.version}`, pkg)
-        } else if (/\.(otf|ttf)(\?|$)/.test(id)) {
-          fonts.add(basename(id.split('?')[0]))
-        }
+      const pkg = findPackage(id)
+      if (pkg) {
+        packages.set(`${pkg.name}@${pkg.version}`, pkg)
+      } else if (/\.(otf|ttf)(\?|$)/.test(id)) {
+        fonts.add(basename(id.split('?')[0]))
       }
     }
-
-    const packageNotices = [...packages.values()]
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((pkg) => {
-        const fallback = licenseFallbacks[pkg.name]
-        const text = findLicenseText(fallback ? join(rootDir, 'node_modules', fallback) : pkg.dir)
-        if (!text) {
-          this.error(`no license text found for bundled package ${pkg.name}`)
-        }
-        return section(`${pkg.name} ${pkg.version} (${pkg.license})`, text)
-      })
-
-    const fontNotices = fontFamilies
-      .map(({ prefix, notice }) => {
-        const files = [...fonts].filter((f) => f.startsWith(prefix)).sort()
-        files.forEach((f) => fonts.delete(f))
-        return files.length && section(`Fonts: ${files.join(', ')}`, notice())
-      })
-      .filter(Boolean)
-    if (fonts.size) {
-      this.error(`no license known for bundled fonts: ${[...fonts].join(', ')}`)
-    }
-
-    const typstNotice = section(
-      'Typst 0.15.1 (Apache-2.0), compiled into typst_ts_web_compiler_bg.wasm',
-      `https://github.com/typst/typst\n\n${readLicense('Typst-LICENSE.txt')}\n\nNOTICE:\n\n${readLicense('Typst-NOTICE.txt')}`
-    )
-
-    this.emitFile({
-      type: 'asset',
-      fileName: 'THIRD-PARTY-NOTICES.txt',
-      source: [
-        'This app bundles the following third-party software and fonts.\n',
-        ...packageNotices,
-        typstNotice,
-        ...fontNotices
-      ].join('\n')
-    })
   }
-})
+}
+
+// Workers are bundled by separate rollup builds that finish while the main
+// build is still transforming, so `worker` goes into vite's `worker.plugins`
+// and feeds its modules into the notices written by `main`.
+export const thirdPartyNotices = () => {
+  const packages = new Map<string, PackageInfo>()
+  const fonts = new Set<string>()
+
+  const worker = (): Plugin => ({
+    name: 'third-party-notices-worker',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      collectModules(bundle, packages, fonts)
+    }
+  })
+
+  const main = (): Plugin => ({
+    name: 'third-party-notices',
+    apply: 'build',
+    buildStart() {
+      packages.clear()
+      fonts.clear()
+    },
+    generateBundle(_options, bundle) {
+      collectModules(bundle, packages, fonts)
+
+      const packageNotices = [...packages.values()]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((pkg) => {
+          const fallback = licenseFallbacks[pkg.name]
+          const text = findLicenseText(fallback ? join(rootDir, 'node_modules', fallback) : pkg.dir)
+          if (!text) {
+            this.error(`no license text found for bundled package ${pkg.name}`)
+          }
+          return section(`${pkg.name} ${pkg.version} (${pkg.license})`, text)
+        })
+
+      const fontNotices = fontFamilies
+        .map(({ prefix, notice }) => {
+          const files = [...fonts].filter((f) => f.startsWith(prefix)).sort()
+          files.forEach((f) => fonts.delete(f))
+          return files.length && section(`Fonts: ${files.join(', ')}`, notice())
+        })
+        .filter(Boolean)
+      if (fonts.size) {
+        this.error(`no license known for bundled fonts: ${[...fonts].join(', ')}`)
+      }
+
+      const typstNotice = section(
+        'Typst 0.15.1 (Apache-2.0), compiled into typst_ts_web_compiler_bg.wasm',
+        `https://github.com/typst/typst\n\n${readLicense('Typst-LICENSE.txt')}\n\nNOTICE:\n\n${readLicense('Typst-NOTICE.txt')}`
+      )
+
+      this.emitFile({
+        type: 'asset',
+        fileName: 'THIRD-PARTY-NOTICES.txt',
+        source: [
+          'This app bundles the following third-party software and fonts.\n',
+          ...packageNotices,
+          typstNotice,
+          ...fontNotices
+        ].join('\n')
+      })
+    }
+  })
+
+  return { main, worker }
+}

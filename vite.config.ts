@@ -83,12 +83,21 @@ const typstCspSafe = (): Plugin => ({
   }
 })
 
+const notices = thirdPartyNotices()
+
 export default defineConfig({
   name: 'web-app-typst',
   // relative asset URLs: the wasm modules and fonts are resolved against the
   // app's own location (/assets/apps/typst/ in oCIS) instead of the host root
   base: './',
-  plugins: [typstCspSafe(), thirdPartyNotices()],
+  plugins: [typstCspSafe(), notices.main()],
+  // the compiler worker (src/helpers/typst.worker.ts) is bundled separately:
+  // as an ES module because typst.ts loads its wasm glue with dynamic imports,
+  // and with its own copy of the CSP patches and notices collection
+  worker: {
+    format: 'es',
+    plugins: () => [typstCspSafe(), notices.worker()]
+  },
   server: {
     port: 9224
   },

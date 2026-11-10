@@ -1,24 +1,6 @@
-import {
-  createTypstCompiler,
-  createTypstRenderer,
-  FetchPackageRegistry,
-  initOptions,
-  MemoryAccessModel,
-  type TypstCompiler,
-  type TypstRenderer
-} from '@myriaddreamin/typst.ts'
-import compilerWasmUrl from '@myriaddreamin/typst-ts-web-compiler/wasm?url'
+import { createTypstRenderer, type TypstRenderer } from '@myriaddreamin/typst.ts/renderer'
 import rendererWasmUrl from '@myriaddreamin/typst-ts-renderer/wasm?url'
-
-// Typst's default text fonts, downloaded by `scripts/fetch-fonts.mjs` and emitted
-// as assets of this app so nothing is fetched from a CDN at runtime.
-const fontUrls = Object.values(
-  import.meta.glob<string>('../assets/fonts/*.{otf,ttf}', {
-    query: '?url',
-    import: 'default',
-    eager: true
-  })
-)
+import type { TypstWorkerRequest, TypstWorkerResponse } from './typst.worker'
 
 export interface TypstDiagnostic {
   path: string
@@ -32,65 +14,79 @@ export interface CompileResult {
   diagnostics: TypstDiagnostic[]
 }
 
-interface TypstEngine {
-  compiler: TypstCompiler
-  renderer: TypstRenderer
+// The compiler runs in a worker (see typst.worker.ts); the renderer stays here
+// because it draws into the page's canvas elements.
+let worker: Worker | undefined
+let nextRequestId = 0
+const pendingRequests = new Map<
+  number,
+  { resolve: (result: unknown) => void; reject: (error: Error) => void }
+>()
+
+const getWorker = () => {
+  if (!worker) {
+    worker = new Worker(new URL('./typst.worker.ts', import.meta.url), { type: 'module' })
+    worker.onmessage = ({ data }: MessageEvent<TypstWorkerResponse>) => {
+      const request = pendingRequests.get(data.id)
+      pendingRequests.delete(data.id)
+      if ('error' in data) {
+        request?.reject(new Error(data.error))
+      } else {
+        request?.resolve(data.result)
+      }
+    }
+    // e.g. the worker script failed to load: fail everything that is waiting
+    // and start a fresh worker on the next request
+    worker.onerror = (event) => {
+      event.preventDefault()
+      const error = new Error(event.message || 'The Typst compiler worker failed to start')
+      pendingRequests.forEach(({ reject }) => reject(error))
+      pendingRequests.clear()
+      worker?.terminate()
+      worker = undefined
+    }
+  }
+  return worker
 }
 
-let enginePromise: Promise<TypstEngine> | undefined
+const request = <T>(message: TypstWorkerRequest): Promise<T> => {
+  const id = nextRequestId++
+  return new Promise<T>((resolve, reject) => {
+    pendingRequests.set(id, { resolve: resolve as (result: unknown) => void, reject })
+    getWorker().postMessage({ id, ...message })
+  })
+}
 
-// The compiler wasm is ~28 MB, so it is only loaded once per page session and
-// shared by every editor instance.
-export const loadTypstEngine = (): Promise<TypstEngine> => {
-  if (!enginePromise) {
-    enginePromise = (async () => {
-      const accessModel = new MemoryAccessModel()
-      const compiler = createTypstCompiler()
+let rendererPromise: Promise<TypstRenderer> | undefined
+
+const loadRenderer = () => {
+  if (!rendererPromise) {
+    rendererPromise = (async () => {
       const renderer = createTypstRenderer()
-      await Promise.all([
-        compiler.init({
-          getModule: () => compilerWasmUrl,
-          beforeBuild: [
-            initOptions.loadFonts(fontUrls, { assets: false }),
-            initOptions.withAccessModel(accessModel),
-            // resolves `@preview/...` imports against packages.typst.org
-            initOptions.withPackageRegistry(new FetchPackageRegistry(accessModel))
-          ]
-        }),
-        renderer.init({ getModule: () => rendererWasmUrl })
-      ])
-      return { compiler, renderer }
+      await renderer.init({ getModule: () => rendererWasmUrl })
+      return renderer
     })()
-    enginePromise.catch(() => {
-      enginePromise = undefined
+    rendererPromise.catch(() => {
+      rendererPromise = undefined
     })
   }
-  return enginePromise
+  return rendererPromise
 }
 
-const normalizeDiagnostics = (diagnostics: unknown[] | undefined): TypstDiagnostic[] =>
-  (diagnostics ?? []).map((d) => {
-    const { path, range, severity, message } = d as TypstDiagnostic
-    return { path, range, severity, message }
-  })
+// The compiler wasm is ~30 MB, so it is only loaded once per page session and
+// shared by every editor instance.
+export const loadTypstEngine = async () => {
+  await Promise.all([request<void>({ type: 'init' }), loadRenderer()])
+}
 
-export const compileTypst = async (
+export const compileTypst = (
   mainFilePath: string,
   source: string,
   format: 'vector' | 'pdf'
-): Promise<CompileResult> => {
-  const { compiler } = await loadTypstEngine()
-  compiler.addSource(mainFilePath, source)
-  const { result, diagnostics } = await compiler.compile({
-    mainFilePath,
-    format: format === 'pdf' ? 1 : 0,
-    diagnostics: 'full'
-  })
-  return { artifact: result, diagnostics: normalizeDiagnostics(diagnostics) }
-}
+): Promise<CompileResult> => request({ type: 'compile', mainFilePath, source, format })
 
 export const renderToCanvas = async (container: HTMLElement, artifact: Uint8Array) => {
-  const { renderer } = await loadTypstEngine()
+  const renderer = await loadRenderer()
   await renderer.renderToCanvas({
     container,
     artifactContent: artifact,
@@ -104,12 +100,5 @@ export const renderToCanvas = async (container: HTMLElement, artifact: Uint8Arra
 // visible to the compiler. Paths are relative to the folder, starting with `/`.
 // The main file itself is skipped: its unsaved editor content is passed to
 // `compileTypst` instead.
-export const setProjectFiles = async (files: Map<string, Uint8Array>, mainFilePath: string) => {
-  const { compiler } = await loadTypstEngine()
-  compiler.resetShadow()
-  for (const [path, content] of files) {
-    if (path !== mainFilePath) {
-      compiler.mapShadow(path, content)
-    }
-  }
-}
+export const setProjectFiles = (files: Map<string, Uint8Array>, mainFilePath: string) =>
+  request<void>({ type: 'setProjectFiles', files, mainFilePath })
