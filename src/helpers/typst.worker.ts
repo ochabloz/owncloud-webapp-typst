@@ -11,6 +11,7 @@ import {
 } from '@myriaddreamin/typst.ts/options.init'
 import compilerWasmUrl from '@myriaddreamin/typst-ts-web-compiler/wasm?url'
 import type { TypstDiagnostic } from './typst'
+import { parseRange } from './diagnostics'
 
 // Typst's default text fonts, downloaded by `scripts/fetch-fonts.mjs` and emitted
 // as assets of this app so nothing is fetched from a CDN at runtime.
@@ -56,10 +57,43 @@ const loadCompiler = () => {
   return compilerPromise
 }
 
+// Typst sources by path, to look up the text a diagnostic points at
+const sources = new Map<string, string>()
+
+const textAt = (path: string, range: string) => {
+  const { start, end } = parseRange(range)
+  const line = sources.get(path)?.split('\n')[start.line - 1]
+  return start.line === end.line ? line?.slice(start.column, end.column) : undefined
+}
+
+const resolvePath = (fromFile: string, path: string) => {
+  const parts = path.startsWith('/') ? [] : fromFile.split('/').slice(1, -1)
+  for (const part of path.split('/')) {
+    if (part === '..') {
+      parts.pop()
+    } else if (part && part !== '.') {
+      parts.push(part)
+    }
+  }
+  return `/${parts.join('/')}`
+}
+
+// The browser file access of typst.ts (tinymist-vfs) reports every file it
+// can't provide as "access denied". All project and package files are handed
+// to the compiler up front, so here it always means the file doesn't exist.
+const describeMissingFile = ({ path, range }: TypstDiagnostic) => {
+  const literal = textAt(path, range)?.match(/^"([^"]*)"$/)?.[1]
+  return literal ? `file not found (searched at ${resolvePath(path, literal)})` : 'file not found'
+}
+
 const normalizeDiagnostics = (diagnostics: unknown[] | undefined): TypstDiagnostic[] =>
   (diagnostics ?? []).map((d) => {
     const { path, range, severity, message } = d as TypstDiagnostic
-    return { path, range, severity, message }
+    const diagnostic = { path, range, severity, message }
+    if (message === 'failed to load file (access denied)') {
+      diagnostic.message = describeMissingFile(diagnostic)
+    }
+    return diagnostic
   })
 
 const handle = async (request: TypstWorkerRequest) => {
@@ -69,6 +103,7 @@ const handle = async (request: TypstWorkerRequest) => {
       return
     case 'compile': {
       compiler.addSource(request.mainFilePath, request.source)
+      sources.set(request.mainFilePath, request.source)
       // `compiler.compile()` only reports diagnostics when compiling fails, so
       // warnings would be lost. A world's `compile()` returns all of them, and
       // exporting from the same world reuses that compiled document.
@@ -92,9 +127,13 @@ const handle = async (request: TypstWorkerRequest) => {
     case 'setProjectFiles':
       // the main file is skipped: its unsaved editor content comes with `compile`
       compiler.resetShadow()
+      sources.clear()
       for (const [path, content] of request.files) {
         if (path !== request.mainFilePath) {
           compiler.mapShadow(path, content)
+          if (path.endsWith('.typ')) {
+            sources.set(path, new TextDecoder().decode(content))
+          }
         }
       }
       return
