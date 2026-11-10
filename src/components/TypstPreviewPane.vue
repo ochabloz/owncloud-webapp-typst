@@ -12,6 +12,10 @@
          document can never run anything in the oCIS origin. -->
     <div v-show="status === 'ready'" ref="pagesContainer" class="typst-preview-pages">
       <div ref="canvasContainer" class="typst-preview-canvas" :style="{ zoom }" />
+      <!-- The renderer empties its container and draws one page per frame, so
+           it draws here, out of sight, and the pages shown above are only
+           replaced once the new ones are complete. -->
+      <div ref="stagingContainer" class="typst-preview-staging" aria-hidden="true" />
     </div>
   </div>
 </template>
@@ -29,18 +33,22 @@ const { artifact = undefined, status, errorMessage = '' } = defineProps<Props>()
 
 const pagesContainer = ref<HTMLElement>()
 const canvasContainer = ref<HTMLElement>()
+const stagingContainer = ref<HTMLElement>()
 
-// The renderer gives pages a fixed pixel width; shrink them to fit the pane.
+// The renderer lays pages out at the pane's width at render time (in their
+// inline style); zoom them to fit when the pane is resized. The canvases are
+// drawn at 2 pixels per point, so they stay sharp when zoomed in.
 const zoom = ref(1)
 const fitToWidth = () => {
   const page = unref(canvasContainer)?.querySelector<HTMLElement>('.typst-page')
   const pages = unref(pagesContainer)
-  if (!page || !pages) {
+  const pageWidth = parseFloat(page?.style.width ?? '')
+  if (!pages || !pageWidth) {
     return
   }
   const { paddingLeft, paddingRight } = getComputedStyle(pages)
   const available = pages.clientWidth - parseFloat(paddingLeft) - parseFloat(paddingRight)
-  zoom.value = Math.min(1, available / page.offsetWidth)
+  zoom.value = available / pageWidth
 }
 
 let resizeObserver: ResizeObserver | undefined
@@ -50,18 +58,28 @@ onMounted(() => {
 })
 onBeforeUnmount(() => resizeObserver?.disconnect())
 
-// Renders are serialized so a slow render can't overwrite a newer one.
+// Renders are serialized so a slow render can't overwrite a newer one, and
+// a render that is still waiting is skipped once a newer artifact arrives.
 let rendering: Promise<void> = Promise.resolve()
+let latestArtifact: Uint8Array | undefined
 watch(
   () => artifact,
   (value) => {
-    if (!value || !canvasContainer.value) {
+    const shown = unref(canvasContainer)
+    const staging = unref(stagingContainer)
+    if (!value || !shown || !staging) {
       return
     }
-    const container = canvasContainer.value
+    latestArtifact = value
     rendering = rendering
-      .then(() => renderToCanvas(container, value))
-      .then(fitToWidth)
+      .then(async () => {
+        if (value !== latestArtifact) {
+          return
+        }
+        await renderToCanvas(staging, value)
+        shown.replaceChildren(...staging.childNodes)
+        fitToWidth()
+      })
       .catch(console.error)
   },
   { flush: 'post' }
@@ -93,7 +111,20 @@ watch(
 }
 
 .typst-preview-pages {
+  position: relative;
   padding: var(--oc-space-medium);
+}
+
+/* as wide as the pages above, but takes no space and shows nothing (the
+   renderer sets its own container's visibility, so that can't hide it) */
+.typst-preview-staging {
+  position: absolute;
+  top: 0;
+  right: var(--oc-space-medium);
+  left: var(--oc-space-medium);
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .typst-preview-canvas :deep(.typst-page) {
