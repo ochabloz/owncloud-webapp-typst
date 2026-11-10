@@ -83,10 +83,17 @@
 <script lang="ts" setup>
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, unref, watch } from 'vue'
 import { useGettext } from 'vue3-gettext'
-import { Resource, SpaceResource } from '@ownclouders/web-client'
-import { AppConfigObject, useClientService, useMessages } from '@ownclouders/web-pkg'
+import { Resource, SpaceResource, urlJoin } from '@ownclouders/web-client'
+import {
+  AppConfigObject,
+  useAuthStore,
+  useClientService,
+  useConfigStore,
+  useMessages
+} from '@ownclouders/web-pkg'
 import type { TypstDiagnostic } from './helpers/typst'
-import { loadProjectFiles, parentPath } from './helpers/projectFiles'
+import { listProjectFiles, parentPath } from './helpers/projectFiles'
+import { encodePath } from './helpers/paths'
 import { parseRange } from './helpers/diagnostics'
 
 // This component must stay in the entry chunk (the AppWrapper inspects its props
@@ -113,6 +120,8 @@ const emit = defineEmits<Emits>()
 
 const { $gettext } = useGettext()
 const clientService = useClientService()
+const authStore = useAuthStore()
+const configStore = useConfigStore()
 const { showMessage, showErrorMessage } = useMessages()
 
 type ViewMode = 'source' | 'split' | 'preview'
@@ -135,12 +144,34 @@ const projectFiles = ref<string[]>([])
 
 const mainFilePath = computed(() => `/${resource.name}`)
 
+// The compiler worker fetches the files of the document's folder itself, with
+// the same URL and credentials as the web client's own WebDAV requests. No
+// trailing slash: the worker appends paths starting with `/`.
+const projectBaseUrl = computed(() =>
+  urlJoin(
+    configStore.serverUrl,
+    'dav',
+    encodePath(urlJoin(space.webDavPath, parentPath(resource.path)))
+  ).replace(/\/+$/, '')
+)
+const base64 = (text: string) => btoa(String.fromCharCode(...new TextEncoder().encode(text)))
+const projectHeaders = () => {
+  const headers: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' }
+  if (authStore.accessToken) {
+    headers.Authorization = `Bearer ${authStore.accessToken}`
+  }
+  if (authStore.publicLinkToken) {
+    headers['public-token'] = authStore.publicLinkToken
+  }
+  if (authStore.publicLinkPassword) {
+    headers.Authorization = `Basic ${base64(`public:${authStore.publicLinkPassword}`)}`
+  }
+  return headers
+}
+
 const statusText = computed(() => {
   if (unref(engineStatus) === 'loading') {
     return $gettext('Loading compiler…')
-  }
-  if (unref(isLoadingProjectFiles)) {
-    return $gettext('Loading project files…')
   }
   if (unref(isCompiling)) {
     return $gettext('Compiling…')
@@ -171,7 +202,7 @@ const compile = (source: string) => {
     isCompiling.value = true
     try {
       const { compileTypst } = await typst()
-      const result = await compileTypst(unref(mainFilePath), next, 'vector')
+      const result = await compileTypst(unref(mainFilePath), next, 'vector', projectHeaders())
       diagnostics.value = result.diagnostics
       // keep showing the last good preview while the document has errors
       if (result.artifact) {
@@ -209,19 +240,24 @@ watch(
 
 const reloadProjectFiles = async () => {
   isLoadingProjectFiles.value = true
+  // the file list only feeds path completion, so the preview doesn't wait for it
+  listProjectFiles(clientService.webdav, space, resource)
+    .then((files) => {
+      projectFiles.value = files
+    })
+    .catch(console.error)
+    .finally(() => {
+      isLoadingProjectFiles.value = false
+    })
   try {
-    const files = await loadProjectFiles(clientService.webdav, space, resource)
-    const { setProjectFiles } = await typst()
-    await setProjectFiles(files, unref(mainFilePath))
-    projectFiles.value = [...files.keys()].sort()
+    const { setProject } = await typst()
+    await setProject({ baseUrl: unref(projectBaseUrl), headers: projectHeaders() })
   } catch (e) {
     console.error(e)
     showErrorMessage({
       title: $gettext('Failed to load files from this folder'),
       errors: [e as Error]
     })
-  } finally {
-    isLoadingProjectFiles.value = false
   }
   await compile(currentContent ?? '')
 }
@@ -233,7 +269,8 @@ const exportPdf = async () => {
     const { artifact: pdf, diagnostics: pdfDiagnostics } = await compileTypst(
       unref(mainFilePath),
       currentContent ?? '',
-      'pdf'
+      'pdf',
+      projectHeaders()
     )
     if (!pdf) {
       diagnostics.value = pdfDiagnostics

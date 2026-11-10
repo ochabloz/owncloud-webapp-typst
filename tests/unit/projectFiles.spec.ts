@@ -1,6 +1,6 @@
 import { Resource, SpaceResource } from '@ownclouders/web-client'
 import { WebDAV } from '@ownclouders/web-client/webdav'
-import { loadProjectFiles, parentPath } from '../../src/helpers/projectFiles'
+import { listProjectFiles, parentPath } from '../../src/helpers/projectFiles'
 
 const file = (path: string, size = 10) =>
   ({
@@ -25,7 +25,6 @@ const createWebdav = (tree: Record<string, Resource[]>) => {
 }
 
 const space = {} as SpaceResource
-const decode = (data: Uint8Array) => new TextDecoder().decode(data)
 
 describe('parentPath', () => {
   it('returns the folder of a file', () => {
@@ -36,53 +35,52 @@ describe('parentPath', () => {
   })
 })
 
-describe('loadProjectFiles', () => {
-  it('maps files relative to the document folder, including subfolders', async () => {
+describe('listProjectFiles', () => {
+  it('lists files relative to the document folder, including subfolders', async () => {
     const main = file('/Docs/thesis/main.typ')
-    const { webdav } = createWebdav({
+    const { webdav, getFileContents } = createWebdav({
       '/Docs/thesis': [main, file('/Docs/thesis/refs.bib'), folder('/Docs/thesis/img')],
-      '/Docs/thesis/img': [file('/Docs/thesis/img/logo.png')]
+      '/Docs/thesis/img': [file('/Docs/thesis/img/logo.png'), file('/Docs/thesis/img/scan.pdf')]
     })
 
-    const files = await loadProjectFiles(webdav, space, main)
+    const files = await listProjectFiles(webdav, space, main)
 
-    expect([...files.keys()].sort()).toEqual(['/img/logo.png', '/refs.bib'])
-    expect(decode(files.get('/refs.bib'))).toBe('content of /Docs/thesis/refs.bib')
+    expect(files).toEqual(['/img/logo.png', '/img/scan.pdf', '/refs.bib'])
+    expect(getFileContents).not.toHaveBeenCalled()
   })
 
   it('keeps absolute paths when the document is at the space root', async () => {
     const main = file('/main.typ')
     const { webdav } = createWebdav({ '/': [main, file('/chapter.typ')] })
 
-    const files = await loadProjectFiles(webdav, space, main)
-
-    expect([...files.keys()]).toEqual(['/chapter.typ'])
+    expect(await listProjectFiles(webdav, space, main)).toEqual(['/chapter.typ'])
   })
 
-  it('skips the main file, unsupported types and oversized files', async () => {
-    const main = file('/p/main.typ')
-    const { webdav, getFileContents } = createWebdav({
-      '/p': [main, file('/p/movie.mp4'), file('/p/main.pdf'), file('/p/huge.png', 50_000_000)]
-    })
-
-    const files = await loadProjectFiles(webdav, space, main)
-
-    expect(files.size).toBe(0)
-    expect(getFileContents).not.toHaveBeenCalled()
-  })
-
-  it('does not descend deeper than three folder levels', async () => {
+  it('does not descend deeper than five folder levels', async () => {
     const main = file('/p/main.typ')
     const { webdav, listFiles } = createWebdav({
       '/p': [main, folder('/p/a')],
       '/p/a': [folder('/p/a/b')],
-      '/p/a/b': [folder('/p/a/b/c'), file('/p/a/b/deep.typ')],
-      '/p/a/b/c': [file('/p/a/b/c/too-deep.typ')]
+      '/p/a/b': [folder('/p/a/b/c')],
+      '/p/a/b/c': [folder('/p/a/b/c/d')],
+      '/p/a/b/c/d': [folder('/p/a/b/c/d/e'), file('/p/a/b/c/d/deep.typ')],
+      '/p/a/b/c/d/e': [file('/p/a/b/c/d/e/too-deep.typ')]
     })
 
-    const files = await loadProjectFiles(webdav, space, main)
+    expect(await listProjectFiles(webdav, space, main)).toEqual(['/a/b/c/d/deep.typ'])
+    expect(listFiles).not.toHaveBeenCalledWith(space, { path: '/p/a/b/c/d/e' })
+  })
 
-    expect([...files.keys()]).toEqual(['/a/b/deep.typ'])
-    expect(listFiles).not.toHaveBeenCalledWith(space, { path: '/p/a/b/c' })
+  it('lists at most 100 folders, nearest first', async () => {
+    const main = file('/p/main.typ')
+    const tree: Record<string, Resource[]> = {
+      '/p': [main, ...Array.from({ length: 150 }, (_, i) => folder(`/p/f${i}`))]
+    }
+    const { webdav, listFiles } = createWebdav(tree)
+
+    await listProjectFiles(webdav, space, main)
+
+    expect(listFiles).toHaveBeenCalledTimes(100)
+    expect(listFiles).toHaveBeenCalledWith(space, { path: '/p' })
   })
 })

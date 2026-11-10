@@ -1,8 +1,8 @@
 // Runs the Typst compiler off the main thread. Compiling is synchronous inside
-// wasm, and `FetchPackageRegistry` downloads `@preview/...` packages with a
-// synchronous XMLHttpRequest, which would freeze the whole oCIS page.
+// wasm, and the files it reads, `@preview/...` packages as well as the
+// document's own folder, are downloaded with synchronous XMLHttpRequests,
+// which would freeze the whole oCIS page.
 import { createTypstCompiler, type TypstCompiler } from '@myriaddreamin/typst.ts/compiler'
-import { MemoryAccessModel } from '@myriaddreamin/typst.ts/fs/memory'
 import { FetchPackageRegistry } from '@myriaddreamin/typst.ts/fs/package'
 import {
   loadFonts,
@@ -12,6 +12,8 @@ import {
 import compilerWasmUrl from '@myriaddreamin/typst-ts-web-compiler/wasm?url'
 import type { TypstDiagnostic } from './typst'
 import { parseRange } from './diagnostics'
+import { encodePath, resolvePath } from './paths'
+import { WebDavAccessModel, type FetchResult } from './webdavAccessModel'
 
 // Typst's default text fonts, downloaded by `scripts/fetch-fonts.mjs` and emitted
 // as assets of this app so nothing is fetched from a CDN at runtime.
@@ -23,21 +25,68 @@ const fontUrls = Object.values(
   })
 )
 
+// Where and how the document's folder is fetched: its WebDAV URL, and the
+// headers that authenticate the request (they change when tokens are renewed).
+export interface ProjectAccess {
+  baseUrl: string
+  headers: Record<string, string>
+}
+
 export type TypstWorkerRequest =
   | { type: 'init' }
-  | { type: 'compile'; mainFilePath: string; source: string; format: 'vector' | 'pdf' }
-  | { type: 'setProjectFiles'; files: Map<string, Uint8Array>; mainFilePath: string }
+  | {
+      type: 'compile'
+      mainFilePath: string
+      source: string
+      format: 'vector' | 'pdf'
+      headers: Record<string, string>
+    }
+  | { type: 'setProject'; access: ProjectAccess }
 
 export type TypstWorkerResponse =
   | { id: number; result?: { artifact?: Uint8Array; diagnostics: TypstDiagnostic[] } }
   | { id: number; error: string }
+
+// Typst sources by path, to look up the text a diagnostic points at
+const sources = new Map<string, string>()
+
+let project: ProjectAccess | undefined
+
+const fetchProjectFile = (path: string): FetchResult => {
+  if (!project) {
+    return { status: 0 }
+  }
+  const request = new XMLHttpRequest()
+  request.open('GET', project.baseUrl + encodePath(path), false)
+  request.responseType = 'arraybuffer'
+  request.timeout = 30_000
+  for (const [name, value] of Object.entries(project.headers)) {
+    request.setRequestHeader(name, value)
+  }
+  // a replaced image must show up after "Reload files"
+  request.setRequestHeader('Cache-Control', 'no-cache')
+  try {
+    request.send()
+  } catch {
+    return { status: 0 }
+  }
+  if (request.status !== 200) {
+    return { status: request.status }
+  }
+  const data = new Uint8Array(request.response as ArrayBuffer)
+  if (path.endsWith('.typ')) {
+    sources.set(path, new TextDecoder().decode(data))
+  }
+  return { status: 200, data }
+}
+
+const accessModel = new WebDavAccessModel(fetchProjectFile)
 
 let compilerPromise: Promise<TypstCompiler> | undefined
 
 const loadCompiler = () => {
   if (!compilerPromise) {
     compilerPromise = (async () => {
-      const accessModel = new MemoryAccessModel()
       const compiler = createTypstCompiler()
       await compiler.init({
         getModule: () => compilerWasmUrl,
@@ -57,33 +106,31 @@ const loadCompiler = () => {
   return compilerPromise
 }
 
-// Typst sources by path, to look up the text a diagnostic points at
-const sources = new Map<string, string>()
-
 const textAt = (path: string, range: string) => {
   const { start, end } = parseRange(range)
   const line = sources.get(path)?.split('\n')[start.line - 1]
   return start.line === end.line ? line?.slice(start.column, end.column) : undefined
 }
 
-const resolvePath = (fromFile: string, path: string) => {
-  const parts = path.startsWith('/') ? [] : fromFile.split('/').slice(1, -1)
-  for (const part of path.split('/')) {
-    if (part === '..') {
-      parts.pop()
-    } else if (part && part !== '.') {
-      parts.push(part)
-    }
-  }
-  return `/${parts.join('/')}`
-}
-
 // The browser file access of typst.ts (tinymist-vfs) reports every file it
-// can't provide as "access denied". All project and package files are handed
-// to the compiler up front, so here it always means the file doesn't exist.
-const describeMissingFile = ({ path, range }: TypstDiagnostic) => {
+// can't get as "access denied". The access model knows why it failed.
+const describeUnreadableFile = ({ path, range }: TypstDiagnostic) => {
   const literal = textAt(path, range)?.match(/^"([^"]*)"$/)?.[1]
-  return literal ? `file not found (searched at ${resolvePath(path, literal)})` : 'file not found'
+  if (!literal) {
+    return 'file not found'
+  }
+  const file = resolvePath(path, literal)
+  const status = accessModel.failure(file)
+  if (status === 401 || status === 403) {
+    return `access denied (${file})`
+  }
+  if (status === 0) {
+    return `could not load ${file} (network error)`
+  }
+  if (status !== undefined && status !== 404) {
+    return `could not load ${file} (HTTP ${status})`
+  }
+  return `file not found (searched at ${file})`
 }
 
 const normalizeDiagnostics = (diagnostics: unknown[] | undefined): TypstDiagnostic[] =>
@@ -91,7 +138,7 @@ const normalizeDiagnostics = (diagnostics: unknown[] | undefined): TypstDiagnost
     const { path, range, severity, message } = d as TypstDiagnostic
     const diagnostic = { path, range, severity, message }
     if (message === 'failed to load file (access denied)') {
-      diagnostic.message = describeMissingFile(diagnostic)
+      diagnostic.message = describeUnreadableFile(diagnostic)
     }
     return diagnostic
   })
@@ -102,6 +149,9 @@ const handle = async (request: TypstWorkerRequest) => {
     case 'init':
       return
     case 'compile': {
+      if (project) {
+        project.headers = request.headers
+      }
       compiler.addSource(request.mainFilePath, request.source)
       sources.set(request.mainFilePath, request.source)
       // `compiler.compile()` only reports diagnostics when compiling fails, so
@@ -124,18 +174,16 @@ const handle = async (request: TypstWorkerRequest) => {
       await compiler.evictCache(10)
       return { artifact: result, diagnostics: normalizeDiagnostics(diagnostics) }
     }
-    case 'setProjectFiles':
-      // the main file is skipped: its unsaved editor content comes with `compile`
+    case 'setProject':
+      // (re)opening a folder: forget everything read so far, including the
+      // compiler's own cache of those files, so the next compile fetches them
+      // again. Unmapping a path is what invalidates that cache.
+      project = request.access
       compiler.resetShadow()
-      sources.clear()
-      for (const [path, content] of request.files) {
-        if (path !== request.mainFilePath) {
-          compiler.mapShadow(path, content)
-          if (path.endsWith('.typ')) {
-            sources.set(path, new TextDecoder().decode(content))
-          }
-        }
+      for (const path of accessModel.clear()) {
+        compiler.unmapShadow(path)
       }
+      sources.clear()
       return
   }
 }

@@ -1,6 +1,8 @@
 import { createTypstRenderer, type TypstRenderer } from '@myriaddreamin/typst.ts/renderer'
 import rendererWasmUrl from '@myriaddreamin/typst-ts-renderer/wasm?url'
-import type { TypstWorkerRequest, TypstWorkerResponse } from './typst.worker'
+import type { ProjectAccess, TypstWorkerRequest, TypstWorkerResponse } from './typst.worker'
+
+export type { ProjectAccess }
 
 export interface TypstDiagnostic {
   path: string
@@ -79,11 +81,14 @@ export const loadTypstEngine = async () => {
   await Promise.all([request<void>({ type: 'init' }), loadRenderer()])
 }
 
+// `headers` authenticate fetching the project's files; they are passed with
+// every compile because access tokens are renewed while the editor is open.
 export const compileTypst = (
   mainFilePath: string,
   source: string,
-  format: 'vector' | 'pdf'
-): Promise<CompileResult> => request({ type: 'compile', mainFilePath, source, format })
+  format: 'vector' | 'pdf',
+  headers: Record<string, string>
+): Promise<CompileResult> => request({ type: 'compile', mainFilePath, source, format, headers })
 
 export const renderToCanvas = async (container: HTMLElement, artifact: Uint8Array) => {
   const renderer = await loadRenderer()
@@ -96,9 +101,7 @@ export const renderToCanvas = async (container: HTMLElement, artifact: Uint8Arra
   })
 }
 
-// Makes files of the document's folder (imports, images, bibliographies, ...)
-// visible to the compiler. Paths are relative to the folder, starting with `/`.
-// The main file itself is skipped: its unsaved editor content is passed to
-// `compileTypst` instead.
-export const setProjectFiles = (files: Map<string, Uint8Array>, mainFilePath: string) =>
-  request<void>({ type: 'setProjectFiles', files, mainFilePath })
+// Points the compiler at the document's folder in WebDAV. Files (imports,
+// images, bibliographies, ...) are fetched when the compiler first reads them;
+// calling this again forgets them, so changed files are fetched anew.
+export const setProject = (access: ProjectAccess) => request<void>({ type: 'setProject', access })
