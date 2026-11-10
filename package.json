@@ -1,6 +1,6 @@
 {
   "name": "web-app-typst",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Typst editor with live preview and PDF export for ownCloud Infinite Scale.",
   "license": "Apache-2.0",
   "type": "module",
