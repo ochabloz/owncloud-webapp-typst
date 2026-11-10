@@ -30,17 +30,61 @@
           <oc-icon name="refresh" fill-type="line" size="small" variation="inherit" />
           <span v-text="$gettext('Reload files')" />
         </oc-button>
-        <oc-button
-          class="typst-editor-export-pdf"
-          appearance="filled"
-          variation="primary"
-          size="small"
-          :disabled="engineStatus !== 'ready' || isExporting"
-          @click="exportPdf"
+        <div class="oc-button-group typst-editor-export">
+          <oc-button
+            class="typst-editor-export-pdf"
+            appearance="filled"
+            variation="primary"
+            size="small"
+            :disabled="engineStatus !== 'ready' || isExporting"
+            @click="exportDocument('pdf')"
+          >
+            <oc-icon name="file-pdf" fill-type="line" size="small" variation="inherit" />
+            <span v-text="$gettext('Export PDF')" />
+          </oc-button>
+          <oc-button
+            id="typst-editor-export-menu-toggle"
+            v-oc-tooltip="$gettext('More export formats')"
+            class="typst-editor-export-more"
+            appearance="filled"
+            variation="primary"
+            size="small"
+            :aria-label="$gettext('More export formats')"
+            :disabled="engineStatus !== 'ready' || isExporting"
+          >
+            <oc-icon name="arrow-down-s" fill-type="line" size="small" variation="inherit" />
+          </oc-button>
+        </div>
+        <oc-drop
+          ref="exportMenu"
+          drop-id="typst-editor-export-menu"
+          toggle="#typst-editor-export-menu-toggle"
+          mode="click"
+          position="bottom-end"
+          padding-size="small"
+          close-on-click
+          @show-drop="isExportMenuOpen = true"
+          @hide-drop="isExportMenuOpen = false"
         >
-          <oc-icon name="file-pdf" fill-type="line" size="small" variation="inherit" />
-          <span v-text="$gettext('Export PDF')" />
-        </oc-button>
+          <oc-list>
+            <li
+              v-for="format in exportFormats"
+              :key="format.name"
+              class="oc-rounded oc-menu-item-hover"
+            >
+              <oc-button
+                appearance="raw"
+                justify-content="left"
+                class="oc-width-1-1 oc-p-xs"
+                :class="`typst-editor-export-${format.name}-menu`"
+                @click="exportDocument(format.name)"
+              >
+                <oc-icon :name="format.icon" fill-type="line" size="small" />
+                <span v-text="format.label" />
+              </oc-button>
+            </li>
+          </oc-list>
+        </oc-drop>
       </div>
     </div>
     <div class="typst-editor-body" :class="`typst-editor-mode-${viewMode}`">
@@ -89,11 +133,14 @@ import {
   useAuthStore,
   useClientService,
   useConfigStore,
-  useMessages
+  useFileActions,
+  useMessages,
+  useRouter
 } from '@ownclouders/web-pkg'
 import type { TypstDiagnostic } from './helpers/typst'
 import { listProjectFiles, parentPath } from './helpers/projectFiles'
 import { encodePath } from './helpers/paths'
+import { exportFileNames, type ExportFormat } from './helpers/exportFiles'
 import { parseRange } from './helpers/diagnostics'
 
 // This component must stay in the entry chunk (the AppWrapper inspects its props
@@ -122,6 +169,8 @@ const { $gettext } = useGettext()
 const clientService = useClientService()
 const authStore = useAuthStore()
 const configStore = useConfigStore()
+const router = useRouter()
+const { getDefaultAction } = useFileActions()
 const { showMessage, showErrorMessage } = useMessages()
 
 type ViewMode = 'source' | 'split' | 'preview'
@@ -131,6 +180,23 @@ const viewModes = computed<{ name: ViewMode; label: string; icon: string }[]>(()
   { name: 'split', label: $gettext('Split'), icon: 'layout-column' },
   { name: 'preview', label: $gettext('Preview'), icon: 'eye' }
 ])
+
+const exportFormats = computed<{ name: ExportFormat; label: string; icon: string }[]>(() => [
+  { name: 'pdf', label: $gettext('PDF'), icon: 'file-pdf' },
+  { name: 'png', label: $gettext('PNG image'), icon: 'image' },
+  { name: 'svg', label: $gettext('SVG image'), icon: 'shape' }
+])
+
+const exportMenu = ref<{ hide: () => void }>()
+const isExportMenuOpen = ref(false)
+// The AppWrapper closes the app on Escape. With the export menu open, Escape
+// only closes the menu.
+const onKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape' && unref(isExportMenuOpen)) {
+    event.stopPropagation()
+    unref(exportMenu)?.hide()
+  }
+}
 
 const editorPane = ref<{ goToLine: (line: number, column?: number) => void }>()
 const engineStatus = ref<'loading' | 'ready' | 'error'>('loading')
@@ -262,32 +328,83 @@ const reloadProjectFiles = async () => {
   await compile(currentContent ?? '')
 }
 
-const exportPdf = async () => {
+const download = (files: { name: string; content: Blob }[]) => {
+  for (const { name, content } of files) {
+    const url = URL.createObjectURL(content)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = name
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+}
+
+// Opens a saved file in a new tab with the app oCIS uses for it (e.g. its PDF
+// viewer, or the image preview, which can also step through the other pages).
+// Without such an app, the file is downloaded instead.
+const openInNewTab = (saved: Resource, file: { name: string; content: Blob }) => {
+  const route = getDefaultAction({ space, resources: [saved] })?.route?.({
+    space,
+    resources: [saved]
+  })
+  if (route) {
+    window.open(router.resolve(route).href, '_blank')
+  } else {
+    download([file])
+  }
+}
+
+const exportDocument = async (format: ExportFormat) => {
   isExporting.value = true
   try {
-    const { compileTypst } = await typst()
-    const { artifact: pdf, diagnostics: pdfDiagnostics } = await compileTypst(
+    const { compileTypst, renderPages } = await typst()
+    const { artifact, diagnostics: exportDiagnostics } = await compileTypst(
       unref(mainFilePath),
       currentContent ?? '',
-      'pdf',
+      format === 'pdf' ? 'pdf' : 'vector',
       projectHeaders()
     )
-    if (!pdf) {
-      diagnostics.value = pdfDiagnostics
-      showErrorMessage({ title: $gettext('Fix the errors in the document to export a PDF') })
+    if (!artifact) {
+      diagnostics.value = exportDiagnostics
+      showErrorMessage({ title: $gettext('Fix the errors in the document to export it') })
       return
     }
-    const pdfName = resource.name.replace(/\.typ$/i, '') + '.pdf'
+    const contents =
+      format === 'pdf'
+        ? [new Blob([artifact.slice().buffer], { type: 'application/pdf' })]
+        : await renderPages(artifact, format)
+    const names = exportFileNames(resource.name, format, contents.length)
+    const files = names.map((name, i) => ({ name, content: contents[i] }))
+
     const folder = parentPath(resource.path)
-    await clientService.webdav.putFileContents(space, {
-      path: `${folder === '/' ? '' : folder}/${pdfName}`,
-      content: pdf.slice().buffer,
-      overwrite: true
+    const saved: Resource[] = []
+    for (const { name, content } of files) {
+      saved.push(
+        await clientService.webdav.putFileContents(space, {
+          path: `${folder === '/' ? '' : folder}/${name}`,
+          content: await content.arrayBuffer(),
+          overwrite: true
+        })
+      )
+    }
+
+    showMessage({
+      title:
+        files.length === 1
+          ? $gettext('Saved "%{name}"', { name: names[0] })
+          : $gettext('Saved %{count} pages as "%{first}" to "%{last}"', {
+              count: files.length.toString(),
+              first: names[0],
+              last: names[names.length - 1]
+            }),
+      actions: [
+        { label: $gettext('Open'), onClick: () => openInNewTab(saved[0], files[0]) },
+        { label: $gettext('Download'), onClick: () => download(files) }
+      ]
     })
-    showMessage({ title: $gettext('Saved "%{name}"', { name: pdfName }) })
   } catch (e) {
     console.error(e)
-    showErrorMessage({ title: $gettext('Failed to export PDF'), errors: [e as Error] })
+    showErrorMessage({ title: $gettext('Failed to export'), errors: [e as Error] })
   } finally {
     isExporting.value = false
   }
@@ -312,6 +429,7 @@ const jumpTo = (diagnostic: TypstDiagnostic) => {
 }
 
 onMounted(async () => {
+  window.addEventListener('keydown', onKeydown, true)
   try {
     const { loadTypstEngine } = await typst()
     await loadTypstEngine()
@@ -326,6 +444,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown, true)
   if (compileTimer) {
     clearTimeout(compileTimer)
   }

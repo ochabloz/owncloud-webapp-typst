@@ -1,6 +1,7 @@
 import { createTypstRenderer, type TypstRenderer } from '@myriaddreamin/typst.ts/renderer'
 import rendererWasmUrl from '@myriaddreamin/typst-ts-renderer/wasm?url'
 import type { ProjectAccess, TypstWorkerRequest, TypstWorkerResponse } from './typst.worker'
+import { splitSvgPages } from './exportFiles'
 
 export type { ProjectAccess }
 
@@ -105,3 +106,51 @@ export const renderToCanvas = async (container: HTMLElement, artifact: Uint8Arra
 // images, bibliographies, ...) are fetched when the compiler first reads them;
 // calling this again forgets them, so changed files are fetched anew.
 export const setProject = (access: ProjectAccess) => request<void>({ type: 'setProject', access })
+
+// Typst's CLI exports PNGs at 144 pixels per inch by default, i.e. 2 per point
+const PNG_PIXEL_PER_PT = 2
+
+const canvasToPng = (canvas: HTMLCanvasElement) =>
+  new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('Failed to encode PNG'))),
+      'image/png'
+    )
+  )
+
+/** Renders each page of a compiled (vector) document as a PNG or SVG file. */
+export const renderPages = async (artifact: Uint8Array, format: 'png' | 'svg') => {
+  const renderer = await loadRenderer()
+  return renderer.runWithSession(
+    { format: 'vector', artifactContent: artifact },
+    async (renderSession) => {
+      if (format === 'svg') {
+        const svg = await renderer.renderSvg({
+          renderSession,
+          // no script: the renderer's JS only drives its own viewer
+          data_selection: { body: true, defs: true, css: true, js: false }
+        })
+        return splitSvgPages(svg).map((page) => new Blob([page], { type: 'image/svg+xml' }))
+      }
+      const pngs: Blob[] = []
+      // one page at a time, so a long document doesn't hold every canvas at once
+      for (const { pageOffset, width, height } of renderer.retrievePagesInfoFromSession(
+        renderSession
+      )) {
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.ceil(width * PNG_PIXEL_PER_PT)
+        canvas.height = Math.ceil(height * PNG_PIXEL_PER_PT)
+        await renderer.renderCanvas({
+          renderSession,
+          // the wasm side only accepts a 2D context, despite the typings
+          canvas: canvas.getContext('2d'),
+          pageOffset,
+          pixelPerPt: PNG_PIXEL_PER_PT,
+          backgroundColor: '#ffffff'
+        })
+        pngs.push(await canvasToPng(canvas))
+      }
+      return pngs
+    }
+  )
+}

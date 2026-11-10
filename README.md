@@ -1,7 +1,7 @@
 # Web App Typst
 
 Typst editor for ownCloud Infinite Scale.
-Live preview. Autocomplete. PDF export. Runs in the browser. No server needed.
+Live preview. Autocomplete. PDF, PNG and SVG export. Runs in the browser. No server needed.
 
 ## Install from release
 
