@@ -12,22 +12,27 @@ import {
   keymap,
   lineNumbers
 } from '@codemirror/view'
-import { Compartment, EditorState, Prec } from '@codemirror/state'
+import { Compartment, EditorState, Prec, StateEffect, StateField, Text } from '@codemirror/state'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { bracketMatching, HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { autocompletion } from '@codemirror/autocomplete'
+import { linter, type Diagnostic } from '@codemirror/lint'
 import { tags } from '@lezer/highlight'
-import { typst_lezer, typstTags } from 'codemirror-lang-typst/lezer'
+import { typst_lezer, typstLezerDiagnostics, typstTags } from 'codemirror-lang-typst/lezer'
 import { useThemeStore } from '@ownclouders/web-pkg'
+import type { TypstDiagnostic } from '../helpers/typst'
+import { parseRange, type TextPosition } from '../helpers/diagnostics'
 
 interface Props {
   modelValue: string
   isReadOnly?: boolean
+  // compiler diagnostics of this file, underlined in the text
+  diagnostics?: TypstDiagnostic[]
 }
 interface Emits {
   (e: 'update:modelValue', value: string): void
 }
-const { modelValue, isReadOnly = false } = defineProps<Props>()
+const { modelValue, isReadOnly = false, diagnostics = [] } = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 const themeStore = useThemeStore()
@@ -81,6 +86,71 @@ const darkHighlightStyle = HighlightStyle.define(
   { themeType: 'dark' }
 )
 
+const toOffset = (doc: Text, { line, column }: TextPosition) => {
+  const docLine = doc.line(Math.min(Math.max(line, 1), doc.lines))
+  return Math.min(docLine.from + column, docLine.to)
+}
+
+const setCompilerDiagnostics = StateEffect.define<Diagnostic[]>()
+
+// Compiler diagnostics stay attached to their text while it is edited, until
+// the next compile replaces them.
+const compilerDiagnostics = StateField.define<Diagnostic[]>({
+  create: () => [],
+  update(value, transaction) {
+    for (const effect of transaction.effects) {
+      if (effect.is(setCompilerDiagnostics)) {
+        return effect.value
+      }
+    }
+    if (!transaction.docChanged) {
+      return value
+    }
+    return value.map((d) => ({
+      ...d,
+      from: transaction.changes.mapPos(d.from),
+      to: transaction.changes.mapPos(d.to)
+    }))
+  }
+})
+
+// The compiler also reports the syntax errors that codemirror-lang-typst's own
+// linter already shows while typing, so lines with those are left to it.
+const compilerLinter = linter(
+  ({ state }) => {
+    const lines = ({ from, to }: { from: number; to: number }) => [
+      state.doc.lineAt(from).number,
+      state.doc.lineAt(to).number
+    ]
+    const syntaxErrorLines = typstLezerDiagnostics(state).map(lines)
+    return state.field(compilerDiagnostics).filter((d) => {
+      const [first, last] = lines(d)
+      return !syntaxErrorLines.some(([from, to]) => first <= to && from <= last)
+    })
+  },
+  {
+    delay: 100,
+    needsRefresh: (update) =>
+      update.transactions.some((t) => t.effects.some((e) => e.is(setCompilerDiagnostics)))
+  }
+)
+
+const toLintDiagnostics = (doc: Text): Diagnostic[] =>
+  diagnostics.map(({ range, severity, message }) => {
+    const { start, end } = parseRange(range)
+    const from = toOffset(doc, start)
+    return {
+      from,
+      to: Math.max(from, toOffset(doc, end)),
+      severity: severity === 'error' || severity === 'warning' ? severity : 'info',
+      message
+    }
+  })
+
+const applyDiagnostics = () => {
+  view?.dispatch({ effects: setCompilerDiagnostics.of(toLintDiagnostics(view.state.doc)) })
+}
+
 const buildReadOnly = () => [
   EditorState.readOnly.of(isReadOnly),
   EditorView.editable.of(!isReadOnly)
@@ -104,6 +174,8 @@ onMounted(() => {
         // built-in functions and their parameters, symbols, labels and the
         // document's own `let` bindings
         autocompletion(),
+        compilerDiagnostics,
+        compilerLinter,
         EditorView.lineWrapping,
         // Ctrl+S is intentionally left unbound so it reaches the AppWrapper's save handler.
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
@@ -124,6 +196,7 @@ onMounted(() => {
       event.stopPropagation()
     }
   })
+  applyDiagnostics()
 })
 
 // External content changes (initial WebDAV load, reload after conflict) flow in
@@ -140,6 +213,8 @@ watch(
     }
   }
 )
+
+watch(() => diagnostics, applyDiagnostics)
 
 watch(
   () => isReadOnly,
@@ -159,10 +234,8 @@ const goToLine = (line: number, column = 0) => {
   if (!view) {
     return
   }
-  const { doc } = view.state
-  const docLine = doc.line(Math.min(Math.max(line, 1), doc.lines))
-  const pos = Math.min(docLine.from + column, docLine.to)
-  view.dispatch({ selection: { anchor: pos }, scrollIntoView: true })
+  const anchor = toOffset(view.state.doc, { line, column })
+  view.dispatch({ selection: { anchor }, scrollIntoView: true })
   view.focus()
 }
 

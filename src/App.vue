@@ -49,6 +49,7 @@
           ref="editorPane"
           :model-value="currentContent"
           :is-read-only="isReadOnly"
+          :diagnostics="mainFileDiagnostics"
           @update:model-value="onInput"
         />
       </div>
@@ -85,6 +86,7 @@ import { Resource, SpaceResource } from '@ownclouders/web-client'
 import { AppConfigObject, useClientService, useMessages } from '@ownclouders/web-pkg'
 import type { TypstDiagnostic } from './helpers/typst'
 import { loadProjectFiles, parentPath } from './helpers/projectFiles'
+import { parseRange } from './helpers/diagnostics'
 
 // This component must stay in the entry chunk (the AppWrapper inspects its props
 // and emits), but CodeMirror and typst.ts are only loaded once a file is opened,
@@ -247,16 +249,12 @@ const exportPdf = async () => {
   }
 }
 
-// Typst ranges are zero-based `line:col-line:col`.
-const parseRangeStart = (range: string) => {
-  const [line, column] = (range ?? '').split('-')[0].split(':').map(Number)
-  return { line: (line || 0) + 1, column: column || 0 }
-}
-
 const isMainFile = (diagnostic: TypstDiagnostic) => diagnostic.path === unref(mainFilePath)
+// underlined in the editor; the list below it also shows other files' diagnostics
+const mainFileDiagnostics = computed(() => unref(diagnostics).filter(isMainFile))
 
 const diagnosticLocation = (diagnostic: TypstDiagnostic) => {
-  const { line, column } = parseRangeStart(diagnostic.range)
+  const { line, column } = parseRange(diagnostic.range).start
   const file = isMainFile(diagnostic) ? '' : `${diagnostic.path.replace(/^\//, '')} `
   return `${file}${line}:${column + 1}`
 }
@@ -265,7 +263,7 @@ const jumpTo = (diagnostic: TypstDiagnostic) => {
   if (!isMainFile(diagnostic)) {
     return
   }
-  const { line, column } = parseRangeStart(diagnostic.range)
+  const { line, column } = parseRange(diagnostic.range).start
   unref(editorPane)?.goToLine(line, column)
 }
 
