@@ -12,11 +12,13 @@ import {
   keymap,
   lineNumbers
 } from '@codemirror/view'
-import { Compartment, EditorState } from '@codemirror/state'
+import { Compartment, EditorState, Prec } from '@codemirror/state'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { bracketMatching, defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { bracketMatching, HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { autocompletion } from '@codemirror/autocomplete'
+import { tags } from '@lezer/highlight'
+import { typst_lezer, typstTags } from 'codemirror-lang-typst/lezer'
 import { useThemeStore } from '@ownclouders/web-pkg'
-import { typstLanguage } from '../helpers/typstLanguage'
 
 interface Props {
   modelValue: string
@@ -61,6 +63,24 @@ const buildTheme = () =>
     { dark: isDark() }
   )
 
+// codemirror-lang-typst only ships typst.app's light colors; these take over
+// while the editor theme is dark
+const darkHighlightStyle = HighlightStyle.define(
+  [
+    { tag: tags.comment, color: '#8f8f99' },
+    { tag: tags.monospace, color: '#a3a3ab' },
+    { tag: typstTags.mathDelimiter, color: '#6fcf66' },
+    { tag: typstTags.listMarker, color: '#c49bec' },
+    { tag: [tags.escape, tags.labelName], color: '#5cc3cf' },
+    { tag: [tags.keyword, tags.null, tags.atom, tags.bool], color: '#ff7a86' },
+    { tag: tags.number, color: '#f68bb8' },
+    { tag: tags.string, color: '#6fcf66' },
+    { tag: tags.function(tags.variableName), color: '#8aa8ff' },
+    { tag: [typstTags.interpolated, tags.propertyName], color: '#c49bec' }
+  ],
+  { themeType: 'dark' }
+)
+
 const buildReadOnly = () => [
   EditorState.readOnly.of(isReadOnly),
   EditorView.editable.of(!isReadOnly)
@@ -78,8 +98,12 @@ onMounted(() => {
         drawSelection(),
         history(),
         bracketMatching(),
-        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-        typstLanguage,
+        // parser, highlighting, indentation, folding and syntax linting
+        typst_lezer(),
+        Prec.high(syntaxHighlighting(darkHighlightStyle)),
+        // built-in functions and their parameters, symbols, labels and the
+        // document's own `let` bindings
+        autocompletion(),
         EditorView.lineWrapping,
         // Ctrl+S is intentionally left unbound so it reaches the AppWrapper's save handler.
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
@@ -92,6 +116,13 @@ onMounted(() => {
         })
       ]
     })
+  })
+  // The AppWrapper closes the app on Escape. Only let the key through when the
+  // editor didn't use it itself, e.g. to close the completion popup.
+  view.dom.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && event.defaultPrevented) {
+      event.stopPropagation()
+    }
   })
 })
 

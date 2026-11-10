@@ -13,10 +13,13 @@
     "fonts": "node scripts/fetch-fonts.mjs"
   },
   "devDependencies": {
+    "@codemirror/autocomplete": "^6.20.4",
     "@codemirror/commands": "^6.11.1",
     "@codemirror/language": "^6.13.1",
+    "@codemirror/lint": "^6.9.7",
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.15",
+    "@lezer/highlight": "^1.2.5",
     "@myriaddreamin/typst-ts-renderer": "0.8.0-rc4",
     "@myriaddreamin/typst-ts-web-compiler": "0.8.0-rc4",
     "@myriaddreamin/typst.ts": "0.8.0-rc4",
@@ -28,6 +31,7 @@
     "@ownclouders/web-pkg": "^13.0.0",
     "@types/node": "26.6.6",
     "@vue/test-utils": "^2.5.1",
+    "codemirror-lang-typst": "^0.6.0",
     "eslint": "9.39.4",
     "happy-dom": "^21.0.4",
     "prettier": "3.9.10",
