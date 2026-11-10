@@ -87,7 +87,12 @@
         </oc-drop>
       </div>
     </div>
-    <div class="typst-editor-body" :class="`typst-editor-mode-${viewMode}`">
+    <div
+      ref="body"
+      class="typst-editor-body"
+      :class="[`typst-editor-mode-${viewMode}`, { 'typst-editor-body-resizing': isResizing }]"
+      :style="bodyStyle"
+    >
       <div class="typst-editor-body-source">
         <typst-editor-pane
           ref="editorPane"
@@ -98,6 +103,28 @@
           @update:model-value="onInput"
         />
       </div>
+      <!-- a focusable separator is an interactive ARIA widget (the rule doesn't
+           know that role) -->
+      <!-- eslint-disable-next-line vuejs-accessibility/no-static-element-interactions -->
+      <div
+        v-if="viewMode === 'split'"
+        class="typst-editor-splitter"
+        role="separator"
+        tabindex="0"
+        aria-orientation="vertical"
+        :aria-label="$gettext('Resize editor and preview')"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        :aria-valuenow="Math.round(splitRatio * 100)"
+        @pointerdown="startResize"
+        @pointermove="resize"
+        @pointerup="stopResize"
+        @pointercancel="stopResize"
+        @lostpointercapture="stopResize"
+        @dblclick="setSplitRatio(0.5)"
+        @keydown.left.prevent="setSplitRatio(splitRatio - 0.05)"
+        @keydown.right.prevent="setSplitRatio(splitRatio + 0.05)"
+      />
       <div class="typst-editor-body-preview">
         <typst-preview-pane
           :artifact="artifact"
@@ -180,6 +207,56 @@ const viewModes = computed<{ name: ViewMode; label: string; icon: string }[]>(()
   { name: 'split', label: $gettext('Split'), icon: 'layout-column' },
   { name: 'preview', label: $gettext('Preview'), icon: 'eye' }
 ])
+
+// Width of the editor in split mode, as a share of the body; remembered in this
+// browser for the next document.
+const SPLIT_RATIO_KEY = 'typst-editor-split-ratio'
+const readSplitRatio = () => {
+  try {
+    const value = parseFloat(window.localStorage.getItem(SPLIT_RATIO_KEY) ?? '')
+    return Number.isFinite(value) ? value : 0.5
+  } catch {
+    return 0.5
+  }
+}
+const clampSplitRatio = (value: number) => Math.min(0.85, Math.max(0.15, value))
+const splitRatio = ref(clampSplitRatio(readSplitRatio()))
+const setSplitRatio = (value: number) => {
+  splitRatio.value = clampSplitRatio(value)
+}
+watch(splitRatio, (value) => {
+  try {
+    window.localStorage.setItem(SPLIT_RATIO_KEY, value.toString())
+  } catch {
+    // e.g. storage disabled: the ratio is just not remembered
+  }
+})
+
+const bodyStyle = computed(() =>
+  unref(viewMode) === 'split'
+    ? { gridTemplateColumns: `${unref(splitRatio)}fr auto ${1 - unref(splitRatio)}fr` }
+    : {}
+)
+
+const body = ref<HTMLElement>()
+const isResizing = ref(false)
+const startResize = (event: PointerEvent) => {
+  if (event.button !== 0) {
+    return
+  }
+  ;(event.target as HTMLElement).setPointerCapture(event.pointerId)
+  isResizing.value = true
+}
+const resize = (event: PointerEvent) => {
+  const rect = unref(body)?.getBoundingClientRect()
+  if (!unref(isResizing) || !rect?.width) {
+    return
+  }
+  setSplitRatio((event.clientX - rect.left) / rect.width)
+}
+const stopResize = () => {
+  isResizing.value = false
+}
 
 const exportFormats = computed<{ name: ExportFormat; label: string; icon: string }[]>(() => [
   { name: 'pdf', label: $gettext('PDF'), icon: 'file-pdf' },
@@ -481,12 +558,34 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.typst-editor-mode-split {
-  grid-template-columns: 1fr 1fr;
+/* a 1px line with a wider grab area on both sides */
+.typst-editor-splitter {
+  position: relative;
+  z-index: 1;
+  width: 1px;
+  background-color: var(--oc-color-border);
+  cursor: col-resize;
+  touch-action: none;
 }
 
-.typst-editor-mode-split .typst-editor-body-preview {
-  border-left: 1px solid var(--oc-color-border);
+.typst-editor-splitter::before {
+  position: absolute;
+  inset: 0 -4px;
+  content: '';
+}
+
+.typst-editor-splitter:hover,
+.typst-editor-splitter:focus-visible,
+.typst-editor-body-resizing .typst-editor-splitter {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--oc-color-swatch-primary-default);
+  background-color: var(--oc-color-swatch-primary-default);
+}
+
+/* keeps the editor from selecting text while dragging over it */
+.typst-editor-body-resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .typst-editor-mode-source {
