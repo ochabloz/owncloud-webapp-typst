@@ -519,3 +519,12 @@ onBeforeUnmount(() => {
   color: var(--oc-color-swatch-warning-default);
 }
 </style>
+
+<style>
+/* oCIS renders notifications outside the app, so this can't be scoped; :has()
+   limits it to while the editor is open. Spaces out the "Open" and
+   "Download" actions of the export notification. */
+body:has(.typst-editor) .oc-notification-message-actions {
+  gap: var(--oc-space-medium);
+}
+</style>
