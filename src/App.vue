@@ -50,6 +50,7 @@
           :model-value="currentContent"
           :is-read-only="isReadOnly"
           :diagnostics="mainFileDiagnostics"
+          :project-files="projectFiles"
           @update:model-value="onInput"
         />
       </div>
@@ -130,6 +131,7 @@ const diagnostics = ref<TypstDiagnostic[]>([])
 const isCompiling = ref(false)
 const isExporting = ref(false)
 const isLoadingProjectFiles = ref(false)
+const projectFiles = ref<string[]>([])
 
 const mainFilePath = computed(() => `/${resource.name}`)
 
@@ -211,6 +213,7 @@ const reloadProjectFiles = async () => {
     const files = await loadProjectFiles(clientService.webdav, space, resource)
     const { setProjectFiles } = await typst()
     await setProjectFiles(files, unref(mainFilePath))
+    projectFiles.value = [...files.keys()].sort()
   } catch (e) {
     console.error(e)
     showErrorMessage({

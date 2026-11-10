@@ -22,17 +22,20 @@ import { typst_lezer, typstLezerDiagnostics, typstTags } from 'codemirror-lang-t
 import { useThemeStore } from '@ownclouders/web-pkg'
 import type { TypstDiagnostic } from '../helpers/typst'
 import { parseRange, type TextPosition } from '../helpers/diagnostics'
+import { pathCompletionSource } from '../helpers/pathCompletion'
 
 interface Props {
   modelValue: string
   isReadOnly?: boolean
   // compiler diagnostics of this file, underlined in the text
   diagnostics?: TypstDiagnostic[]
+  // files of the document's folder (e.g. `/chapters/intro.typ`), for path completion
+  projectFiles?: string[]
 }
 interface Emits {
   (e: 'update:modelValue', value: string): void
 }
-const { modelValue, isReadOnly = false, diagnostics = [] } = defineProps<Props>()
+const { modelValue, isReadOnly = false, diagnostics = [], projectFiles = [] } = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 const themeStore = useThemeStore()
@@ -151,6 +154,10 @@ const applyDiagnostics = () => {
   view?.dispatch({ effects: setCompilerDiagnostics.of(toLintDiagnostics(view.state.doc)) })
 }
 
+// created once: the autocompletion matches sources by identity, so a new
+// function per lookup would discard every result
+const pathCompletionData = [{ autocomplete: pathCompletionSource(() => projectFiles) }]
+
 const buildReadOnly = () => [
   EditorState.readOnly.of(isReadOnly),
   EditorView.editable.of(!isReadOnly)
@@ -172,8 +179,9 @@ onMounted(() => {
         typst_lezer(),
         Prec.high(syntaxHighlighting(darkHighlightStyle)),
         // built-in functions and their parameters, symbols, labels and the
-        // document's own `let` bindings
+        // document's own `let` bindings, plus project files in path arguments
         autocompletion(),
+        EditorState.languageData.of(() => pathCompletionData),
         compilerDiagnostics,
         compilerLinter,
         EditorView.lineWrapping,
