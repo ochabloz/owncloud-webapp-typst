@@ -147,6 +147,10 @@ const statusText = computed(() => {
   if (errors) {
     return $gettext('%{count} error(s)', { count: errors.toString() })
   }
+  const warnings = unref(diagnostics).filter((d) => d.severity === 'warning').length
+  if (warnings) {
+    return $gettext('%{count} warning(s)', { count: warnings.toString() })
+  }
   return ''
 })
 

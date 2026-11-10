@@ -69,11 +69,21 @@ const handle = async (request: TypstWorkerRequest) => {
       return
     case 'compile': {
       compiler.addSource(request.mainFilePath, request.source)
-      const { result, diagnostics } = await compiler.compile({
-        mainFilePath: request.mainFilePath,
-        format: request.format === 'pdf' ? 1 : 0,
-        diagnostics: 'full'
-      })
+      // `compiler.compile()` only reports diagnostics when compiling fails, so
+      // warnings would be lost. A world's `compile()` returns all of them, and
+      // exporting from the same world reuses that compiled document.
+      const { result, diagnostics } = await compiler.runWithWorld(
+        { mainFilePath: request.mainFilePath },
+        async (world) => {
+          const { hasError, diagnostics } = await world.compile({ diagnostics: 'full' })
+          if (hasError) {
+            return { result: undefined, diagnostics }
+          }
+          const opts = { diagnostics: 'full' } as const
+          const { result } = await (request.format === 'pdf' ? world.pdf(opts) : world.vector(opts))
+          return { result, diagnostics }
+        }
+      )
       // like `typst watch`: drop cached results not used by the last 10 compiles
       // so a long editing session doesn't keep growing memory
       await compiler.evictCache(10)
