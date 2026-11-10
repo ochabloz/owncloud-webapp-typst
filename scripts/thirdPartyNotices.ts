@@ -125,7 +125,7 @@ export const thirdPartyNotices = (): Plugin => ({
     }
 
     const typstNotice = section(
-      'Typst 0.14.2 (Apache-2.0), compiled into typst_ts_web_compiler_bg.wasm',
+      'Typst 0.15.1 (Apache-2.0), compiled into typst_ts_web_compiler_bg.wasm',
       `https://github.com/typst/typst\n\n${readLicense('Typst-LICENSE.txt')}\n\nNOTICE:\n\n${readLicense('Typst-NOTICE.txt')}`
     )
 

@@ -4,8 +4,9 @@ import { thirdPartyNotices } from './scripts/thirdPartyNotices'
 
 // typst.ts evaluates strings as code in a few places, which would force admins
 // to allow 'unsafe-eval' in the oCIS CSP (on top of 'wasm-unsafe-eval'):
-// - the wasm-bindgen glue builds trivial functions from fixed strings in the
-//   wasm (`new Function("return 0")`, placeholder access model callbacks, ...)
+// - the compiler's wasm-bindgen glue builds trivial functions from fixed
+//   strings in the wasm (`new Function("return 0")`, placeholder access model
+//   callbacks, ...)
 // - Node.js-only code paths use `new Function('m', 'return import(m)')`, and
 //   the loader shim takes that path because the oCIS runtime defines `process`
 // Every replacement must match, so a typst.ts upgrade that changes the code
@@ -51,16 +52,6 @@ const typstCspPatches: {
     ]
   },
   {
-    file: /typst-ts-renderer\/pkg\/typst_ts_renderer\.mjs$/,
-    prepend: typstFunctionTable,
-    replacements: [
-      [
-        'new Function(getStringFromWasm0(arg0, arg1))',
-        '__typstFunction(getStringFromWasm0(arg0, arg1))'
-      ]
-    ]
-  },
-  {
     file: /typst-ts-(web-compiler|renderer)\/pkg\/wasm-pack-shim\.mjs$/,
     replacements: [
       ["new Function('m', 'return import(m)')", nodeOnly],
@@ -68,7 +59,7 @@ const typstCspPatches: {
     ]
   },
   {
-    file: /typst\.ts\/dist\/esm\/init\.mjs$/,
+    file: /typst\.ts\/dist\/esm\/(init|contrib\/snippet)\.mjs$/,
     replacements: [["new Function('m', 'return import(m)')", nodeOnly]]
   }
 ]
