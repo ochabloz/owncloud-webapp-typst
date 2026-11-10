@@ -1,42 +1,55 @@
 // Downloads Typst's default text fonts into src/assets/fonts so the app serves them
 // itself instead of pulling them from a CDN at runtime (keeps the oCIS CSP
-// connect-src strict and works offline). Files are OFL / Bitstream Vera licensed.
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+// connect-src strict and works offline). Licenses: see scripts/thirdPartyNotices.ts.
+// Files are checked against their SHA-256, so a font left over from an older
+// typst-assets version is downloaded again.
+import { createHash } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-const baseUrl = 'https://cdn.jsdelivr.net/gh/typst/typst-assets@v0.13.1/files/fonts/'
-const fonts = [
-  'DejaVuSansMono-Bold.ttf',
-  'DejaVuSansMono-BoldOblique.ttf',
-  'DejaVuSansMono-Oblique.ttf',
-  'DejaVuSansMono.ttf',
-  'LibertinusSerif-Bold.otf',
-  'LibertinusSerif-BoldItalic.otf',
-  'LibertinusSerif-Italic.otf',
-  'LibertinusSerif-Regular.otf',
-  'LibertinusSerif-Semibold.otf',
-  'LibertinusSerif-SemiboldItalic.otf',
-  'NewCM10-Bold.otf',
-  'NewCM10-BoldItalic.otf',
-  'NewCM10-Italic.otf',
-  'NewCM10-Regular.otf',
-  'NewCMMath-Bold.otf',
-  'NewCMMath-Book.otf',
-  'NewCMMath-Regular.otf'
-]
+const baseUrl = 'https://cdn.jsdelivr.net/gh/typst/typst-assets@v0.15.1/files/fonts/'
+const fonts = {
+  'DejaVuSansMono-Bold.ttf': 'bce60f1b4421acd9ea51ba6623d7024ecbe6817a953e3654df62a5e6bdf8f769',
+  'DejaVuSansMono-BoldOblique.ttf':
+    '91713a71d550bba22c2a6b2bb2a9ad8f9a159e12e4e9f0a5b2677998ba21213e',
+  'DejaVuSansMono-Oblique.ttf': '742097840c541870e8d6dc5c9b37bb1ceeea6c0dedd1d475faf903ef9df734b0',
+  'DejaVuSansMono.ttf': 'b4a6c3e4faab8773f4ff761d56451646409f29abedd68f05d38c2df667d3c582',
+  'LibertinusSerif-Bold.otf': '0264914210ed51b3231ebc92ce529e9f2e166ba9eebf0cd4a579558690a27b64',
+  'LibertinusSerif-BoldItalic.otf':
+    '47a665259f09f554f5d133d7718cdad43ff462c6a6b2328f38023465e62d57ce',
+  'LibertinusSerif-Italic.otf': '9a393d63d6e05f620d3dc0190dfd35a8ede58c0808cf0fc9de7fcb9c723e4c24',
+  'LibertinusSerif-Regular.otf': 'fcf06307a77367394fcb0ccb241e59eea70dba3d732be309647611224679c733',
+  'LibertinusSerif-Semibold.otf':
+    'a4b3f28e85881db34695c1f005e4c79233a6caf3a2bd286c9b418c025fb99308',
+  'LibertinusSerif-SemiboldItalic.otf':
+    '397f0d7aba35ae6a988948ae046c14c6b1e0d270fcc6e292b8bc29fd625c6101',
+  'NewCM10-Bold.otf': '40b0b32b63655fe802679ee4a14adb29c762a4712095d9c84cf7df7852b5152e',
+  'NewCM10-BoldItalic.otf': 'fb53f43500c8ffbcc6dfdea5a519961d475543174ea2a0dcbe16c08510299fdf',
+  'NewCM10-Italic.otf': 'a55d07607eec48889b6e7e7d51d7703c3beb915a39690f34fe01b4e2a744a9d6',
+  'NewCM10-Regular.otf': '328698d764ccdf7acf6bc1088aefd83a237f6a1d8b812de1e77ac5e4483bf3d1',
+  'NewCMMath-Bold.otf': 'c6c0e060da57d4f44274705afb956013047231dc62be5a4b02a351ab0dc43f2f',
+  'NewCMMath-Book.otf': '2ea09ebc9167b1e1a66f31390dc917f2d4004ecfca72d51b28010e4ad6becd95',
+  'NewCMMath-Regular.otf': 'd66ac1cc91c55c24d3636ae2df1238076debdff51841f9893fc5419cc2df3df7'
+}
+
+const sha256 = (data) => createHash('sha256').update(data).digest('hex')
 
 const outDir = join(import.meta.dirname, '..', 'src', 'assets', 'fonts')
 mkdirSync(outDir, { recursive: true })
 
-for (const font of fonts) {
+for (const [font, hash] of Object.entries(fonts)) {
   const target = join(outDir, font)
-  if (existsSync(target)) {
+  if (existsSync(target) && sha256(readFileSync(target)) === hash) {
     continue
   }
   const response = await fetch(baseUrl + font)
   if (!response.ok) {
     throw new Error(`Failed to download ${font}: ${response.status}`)
   }
-  writeFileSync(target, Buffer.from(await response.arrayBuffer()))
+  const data = Buffer.from(await response.arrayBuffer())
+  if (sha256(data) !== hash) {
+    throw new Error(`Downloaded ${font} does not match its SHA-256`)
+  }
+  writeFileSync(target, data)
   console.log(`downloaded ${font}`)
 }

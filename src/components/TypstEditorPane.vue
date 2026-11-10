@@ -55,8 +55,12 @@ const buildTheme = () =>
         color: 'var(--oc-color-text-default)',
         backgroundColor: 'var(--oc-color-background-default)'
       },
+      // oCIS sets `font-family: var(--oc-font-family)` on every element, which
+      // beats an inherited font-family, so the variable is set instead
+      '.cm-scroller, .cm-tooltip-autocomplete': {
+        '--oc-font-family': 'Consolas, "Liberation Mono", Menlo, monospace'
+      },
       '.cm-scroller': {
-        fontFamily: 'Consolas, "Liberation Mono", Menlo, monospace',
         lineHeight: '1.5',
         overflow: 'auto'
       },

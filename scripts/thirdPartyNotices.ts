@@ -36,8 +36,11 @@ ${readLicense('Libertinus-OFL.txt')}`
   },
   {
     prefix: 'NewCM',
-    notice: () => `New Computer Modern 7.0.1, New Computer Modern Math 4.0
-(C) 2019-2024 Antonis Tsolomitis (GUST Font License, i.e. LPPL 1.3c)
+    notice: () => `New Computer Modern 8.1.1, New Computer Modern Math 4.0 and 5.3.0
+(C) 2019-2026 Antonis Tsolomitis
+
+NewCM10-Regular.otf: GNU GPL version 3 or later plus Font Exception (FE) plus
+Distribution Exception (DE). The other files: GUST Font License, i.e. LPPL 1.3c.
 
 These font files are unmodified copies of files from the New Computer Modern
 distribution, as packaged in https://github.com/typst/typst-assets. Only the
@@ -46,7 +49,9 @@ https://ctan.org/pkg/newcomputermodern
 
 ${readLicense('NewComputerModern-GUST-FONT-LICENSE.txt')}
 
-${readLicense('LPPL-1.3c.txt')}`
+${readLicense('LPPL-1.3c.txt')}
+
+${readLicense('NewComputerModern-GPL3-FE-DE.txt')}`
   }
 ]
 
@@ -153,6 +158,13 @@ export const thirdPartyNotices = () => {
         'Typst 0.15.1 (Apache-2.0), compiled into typst_ts_web_compiler_bg.wasm',
         `https://github.com/typst/typst\n\n${readLicense('Typst-LICENSE.txt')}\n\nNOTICE:\n\n${readLicense('Typst-NOTICE.txt')}`
       )
+      // Typst compiles in some of typst-assets' files: the Foxit fonts that stand
+      // in for the PDF standard fonts in PDF images, ICC profiles, HTML and
+      // MathML data. Its NOTICE covers those (and the fonts above).
+      const typstAssetsNotice = section(
+        'typst-assets 0.15.1 (Apache-2.0, same license as Typst above), compiled into typst_ts_web_compiler_bg.wasm',
+        `https://github.com/typst/typst-assets\n\nNOTICE:\n\n${readLicense('Typst-Assets-NOTICE.txt')}`
+      )
 
       this.emitFile({
         type: 'asset',
@@ -161,6 +173,7 @@ export const thirdPartyNotices = () => {
           'This app bundles the following third-party software and fonts.\n',
           ...packageNotices,
           typstNotice,
+          typstAssetsNotice,
           ...fontNotices
         ].join('\n')
       })

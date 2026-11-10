@@ -602,7 +602,8 @@ onBeforeUnmount(() => {
   overflow: auto;
   list-style: none;
   border-top: 1px solid var(--oc-color-border);
-  font-family: Consolas, 'Liberation Mono', Menlo, monospace;
+  /* oCIS sets `font-family: var(--oc-font-family)` on every element */
+  --oc-font-family: Consolas, 'Liberation Mono', Menlo, monospace;
   font-size: var(--oc-font-size-small);
 }
 
