@@ -1,7 +1,7 @@
 // Runs the Typst compiler off the main thread. Compiling is synchronous inside
 // wasm, and the files it reads, `@preview/...` packages as well as the
 // document's own folder, are downloaded with synchronous XMLHttpRequests,
-// which would freeze the whole oCIS page.
+// which would freeze the whole OpenCloud page.
 import {
   createTypstCompiler,
   createTypstFontBuilder,

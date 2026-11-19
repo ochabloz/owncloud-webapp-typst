@@ -9,7 +9,7 @@
       <p class="typst-preview-error">{{ errorMessage }}</p>
     </div>
     <!-- Rendering to canvas (not inline SVG) means links or markup in a shared
-         document can never run anything in the oCIS origin. -->
+         document can never run anything in the OpenCloud origin. -->
     <div v-show="status === 'ready'" ref="pagesContainer" class="typst-preview-pages">
       <div ref="canvasContainer" class="typst-preview-canvas" :style="{ zoom }" />
       <!-- The renderer empties its container and draws one page per frame, so
@@ -90,7 +90,7 @@ watch(
 .typst-preview-pane {
   height: 100%;
   overflow: auto;
-  background-color: var(--oc-color-background-muted);
+  background-color: var(--oc-role-surface-container);
 }
 
 .typst-preview-status {
@@ -98,11 +98,11 @@ watch(
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--oc-space-medium);
+  gap: 16px;
   height: 100%;
-  padding: var(--oc-space-large);
+  padding: 24px;
   text-align: center;
-  color: var(--oc-color-text-muted);
+  color: var(--oc-role-on-surface-variant);
 }
 
 .typst-preview-error {
@@ -112,7 +112,7 @@ watch(
 
 .typst-preview-pages {
   position: relative;
-  padding: var(--oc-space-medium);
+  padding: 16px;
 }
 
 /* as wide as the pages above, but takes no space and shows nothing (the
@@ -120,15 +120,15 @@ watch(
 .typst-preview-staging {
   position: absolute;
   top: 0;
-  right: var(--oc-space-medium);
-  left: var(--oc-space-medium);
+  right: 16px;
+  left: 16px;
   height: 0;
   overflow: hidden;
   pointer-events: none;
 }
 
 .typst-preview-canvas :deep(.typst-page) {
-  margin: 0 auto var(--oc-space-medium);
+  margin: 0 auto 16px;
   background-color: #fff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 }

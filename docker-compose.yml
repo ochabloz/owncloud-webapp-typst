@@ -1,31 +1,31 @@
 services:
-  ocis:
-    image: ${OCIS_IMAGE:-owncloud/ocis-rolling:latest}
+  opencloud:
+    image: ${OC_IMAGE:-opencloudeu/opencloud-rolling:latest}
     extra_hosts:
       - host.docker.internal:${DOCKER_HOST:-host-gateway}
     entrypoint: /bin/sh
-    command: ['-c', 'ocis init || true && ocis server']
+    command: ['-c', 'opencloud init || true && opencloud server']
     environment:
-      OCIS_URL: https://host.docker.internal:9200
-      OCIS_INSECURE: true
-      OCIS_LOG_LEVEL: error
+      OC_URL: https://host.docker.internal:9200
+      OC_INSECURE: true
+      OC_LOG_LEVEL: error
       IDM_ADMIN_PASSWORD: admin
       IDM_CREATE_DEMO_USERS: true
       PROXY_ENABLE_BASIC_AUTH: true
       PROXY_TLS: 'false'
       WEB_ASSET_APPS_PATH: /web/apps
-      PROXY_CSP_CONFIG_FILE_LOCATION: /etc/ocis/csp.yaml
+      PROXY_CSP_CONFIG_FILE_LOCATION: /etc/opencloud/csp.yaml
     labels:
       traefik.enable: true
-      traefik.http.routers.ocis.tls: true
-      traefik.http.routers.ocis.rule: Host(`host.docker.internal`) && PathPrefix(`/`)
-      traefik.http.routers.ocis.entrypoints: ocis
-      traefik.http.services.ocis.loadbalancer.server.port: 9200
-      traefik.http.routers.ocis.middlewares: cors
+      traefik.http.routers.opencloud.tls: true
+      traefik.http.routers.opencloud.rule: Host(`host.docker.internal`) && PathPrefix(`/`)
+      traefik.http.routers.opencloud.entrypoints: opencloud
+      traefik.http.services.opencloud.loadbalancer.server.port: 9200
+      traefik.http.routers.opencloud.middlewares: cors
     volumes:
-      - ocis-config:/etc/ocis
-      - ./dev/docker/ocis/apps.yaml:/etc/ocis/apps.yaml
-      - ./dev/docker/ocis/csp.yaml:/etc/ocis/csp.yaml
+      - opencloud-config:/etc/opencloud
+      - ./dev/docker/opencloud/apps.yaml:/etc/opencloud/apps.yaml
+      - ./dev/docker/opencloud/csp.yaml:/etc/opencloud/csp.yaml
       - ./dist:/web/apps/typst
     depends_on:
       - traefik
@@ -37,7 +37,7 @@ services:
       [
         '/bin/sh',
         '-c',
-        "[ -f /certificates/server.key ] && ./entrypoint.sh $$@ || (apk add openssl && openssl req -subj '/CN=ocis.test' -x509 -sha256 -nodes -days 3650 -newkey rsa:2048 -keyout /certificates/server.key -out /certificates/server.crt && chmod -R 777 /certificates && ./entrypoint.sh $$@)"
+        "[ -f /certificates/server.key ] && ./entrypoint.sh $$@ || (apk add openssl && openssl req -subj '/CN=opencloud.test' -x509 -sha256 -nodes -days 3650 -newkey rsa:2048 -keyout /certificates/server.key -out /certificates/server.crt && chmod -R 777 /certificates && ./entrypoint.sh $$@)"
       ]
     command:
       - '--pilot.dashboard=false'
@@ -48,8 +48,8 @@ services:
       - '--providers.docker=true'
       - '--providers.docker.exposedbydefault=false'
       - '--entrypoints.web.address=:80'
-      - '--entrypoints.ocis.address=:9200'
-      - '--entrypoints.ocis-federated.address=:10200'
+      - '--entrypoints.opencloud.address=:9200'
+      - '--entrypoints.opencloud-federated.address=:10200'
       - '--entrypoints.websecure.address=:443'
       - '--entrypoints.websecure.http.middlewares=https_config@docker'
       - '--entrypoints.websecure.http.tls.options=default'
@@ -75,4 +75,4 @@ services:
       - '/var/run/docker.sock:/var/run/docker.sock:ro'
 
 volumes:
-  ocis-config:
+  opencloud-config:

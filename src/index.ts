@@ -3,7 +3,7 @@ import {
   ApplicationFileExtension,
   ApplicationInformation,
   defineWebApplication
-} from '@ownclouders/web-pkg'
+} from '@opencloud-eu/web-pkg'
 import { RouteRecordRaw } from 'vue-router'
 import { useGettext } from 'vue3-gettext'
 import TypstEditor from './App.vue'

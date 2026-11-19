@@ -1,5 +1,5 @@
-import { Resource, SpaceResource } from '@ownclouders/web-client'
-import { WebDAV } from '@ownclouders/web-client/webdav'
+import { Resource, SpaceResource } from '@opencloud-eu/web-client'
+import { WebDAV } from '@opencloud-eu/web-client/webdav'
 
 // Only names are listed (the compiler fetches file contents itself, see
 // typst.worker.ts), so this is just bounded to keep a document in a huge

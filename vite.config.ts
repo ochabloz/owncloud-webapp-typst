@@ -1,14 +1,14 @@
-import { defineConfig } from '@ownclouders/extension-sdk'
+import { defineConfig } from '@opencloud-eu/extension-sdk'
 import type { Plugin } from 'vite'
 import { thirdPartyNotices } from './scripts/thirdPartyNotices'
 
 // typst.ts evaluates strings as code in a few places, which would force admins
-// to allow 'unsafe-eval' in the oCIS CSP (on top of 'wasm-unsafe-eval'):
+// to allow 'unsafe-eval' in the OpenCloud CSP (on top of 'wasm-unsafe-eval'):
 // - the compiler's wasm-bindgen glue builds trivial functions from fixed
 //   strings in the wasm (`new Function("return 0")`, placeholder access model
 //   callbacks, ...)
 // - Node.js-only code paths use `new Function('m', 'return import(m)')`, and
-//   the loader shim takes that path because the oCIS runtime defines `process`
+//   the loader shim takes that path because the OpenCloud runtime defines `process`
 // Every replacement must match, so a typst.ts upgrade that changes the code
 // fails the build instead of silently breaking the app under the CSP.
 const typstFunctionTable = `const __typstFunctions = {
@@ -88,7 +88,7 @@ const notices = thirdPartyNotices()
 export default defineConfig({
   name: 'web-app-typst',
   // relative asset URLs: the wasm modules and fonts are resolved against the
-  // app's own location (/assets/apps/typst/ in oCIS) instead of the host root
+  // app's own location (/assets/apps/typst/ in OpenCloud) instead of the host root
   base: './',
   plugins: [typstCspSafe(), notices.main()],
   // the compiler worker (src/helpers/typst.worker.ts) is bundled separately:
@@ -100,12 +100,5 @@ export default defineConfig({
   },
   server: {
     port: 9224
-  },
-  build: {
-    rollupOptions: {
-      output: {
-        entryFileNames: 'index.js'
-      }
-    }
   }
 })

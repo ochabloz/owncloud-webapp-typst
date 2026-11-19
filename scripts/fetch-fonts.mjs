@@ -1,5 +1,5 @@
 // Downloads Typst's default text fonts into src/assets/fonts so the app serves them
-// itself instead of pulling them from a CDN at runtime (keeps the oCIS CSP
+// itself instead of pulling them from a CDN at runtime (keeps the OpenCloud CSP
 // connect-src strict and works offline). Licenses: see scripts/thirdPartyNotices.ts.
 // Files are checked against their SHA-256, so a font left over from an older
 // typst-assets version is downloaded again.

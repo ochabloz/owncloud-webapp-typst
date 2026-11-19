@@ -1,5 +1,5 @@
-import { Resource, SpaceResource } from '@ownclouders/web-client'
-import { WebDAV } from '@ownclouders/web-client/webdav'
+import { Resource, SpaceResource } from '@opencloud-eu/web-client'
+import { WebDAV } from '@opencloud-eu/web-client/webdav'
 import { isFontFile, listProjectFiles, parentPath } from '../../src/helpers/projectFiles'
 
 const file = (path: string, size = 10) =>

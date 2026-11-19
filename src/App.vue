@@ -1,6 +1,6 @@
 <template>
-  <div class="typst-editor oc-width-1-1 oc-height-1-1">
-    <div class="typst-editor-toolbar oc-flex oc-flex-middle oc-flex-between oc-px-s oc-py-xs">
+  <div class="typst-editor">
+    <div class="typst-editor-toolbar">
       <div class="oc-button-group" role="group" :aria-label="$gettext('View mode')">
         <oc-button
           v-for="mode in viewModes"
@@ -10,15 +10,14 @@
           :appearance="viewMode === mode.name ? 'filled' : 'outline'"
           :aria-label="mode.label"
           :aria-pressed="viewMode === mode.name"
-          variation="primary"
           size="small"
           @click="viewMode = mode.name"
         >
-          <oc-icon :name="mode.icon" fill-type="line" size="small" variation="inherit" />
+          <oc-icon :name="mode.icon" fill-type="line" size="small" />
         </oc-button>
       </div>
-      <div class="oc-flex oc-flex-middle typst-editor-toolbar-actions">
-        <span class="typst-editor-status oc-text-muted oc-text-small">{{ statusText }}</span>
+      <div class="typst-editor-toolbar-actions">
+        <span class="typst-editor-status">{{ statusText }}</span>
         <oc-button
           v-oc-tooltip="$gettext('Reload images, fonts and included files from this folder')"
           class="typst-editor-reload"
@@ -27,19 +26,19 @@
           :disabled="engineStatus !== 'ready' || isLoadingProjectFiles"
           @click="reloadProjectFiles"
         >
-          <oc-icon name="refresh" fill-type="line" size="small" variation="inherit" />
+          <oc-icon name="refresh" fill-type="line" size="small" />
           <span v-text="$gettext('Reload files')" />
         </oc-button>
         <div class="oc-button-group typst-editor-export">
           <oc-button
             class="typst-editor-export-pdf"
             appearance="filled"
-            variation="primary"
+            color-role="primary"
             size="small"
             :disabled="engineStatus !== 'ready' || isExporting"
             @click="exportDocument('pdf')"
           >
-            <oc-icon name="file-pdf" fill-type="line" size="small" variation="inherit" />
+            <oc-icon name="file-pdf" fill-type="line" size="small" />
             <span v-text="$gettext('Export PDF')" />
           </oc-button>
           <oc-button
@@ -47,12 +46,12 @@
             v-oc-tooltip="$gettext('More export formats')"
             class="typst-editor-export-more"
             appearance="filled"
-            variation="primary"
+            color-role="primary"
             size="small"
             :aria-label="$gettext('More export formats')"
             :disabled="engineStatus !== 'ready' || isExporting"
           >
-            <oc-icon name="arrow-down-s" fill-type="line" size="small" variation="inherit" />
+            <oc-icon name="arrow-down-s" fill-type="line" size="small" />
           </oc-button>
         </div>
         <oc-drop
@@ -67,15 +66,11 @@
           @hide-drop="isExportMenuOpen = false"
         >
           <oc-list>
-            <li
-              v-for="format in exportFormats"
-              :key="format.name"
-              class="oc-rounded oc-menu-item-hover"
-            >
+            <li v-for="format in exportFormats" :key="format.name" class="typst-editor-export-item">
               <oc-button
                 appearance="raw"
                 justify-content="left"
-                class="oc-width-1-1 oc-p-xs"
+                class="typst-editor-export-item-button"
                 :class="`typst-editor-export-${format.name}-menu`"
                 @click="exportDocument(format.name)"
               >
@@ -133,7 +128,7 @@
         />
       </div>
     </div>
-    <ul v-if="diagnostics.length" class="typst-editor-diagnostics oc-m-rm oc-p-s">
+    <ul v-if="diagnostics.length" class="typst-editor-diagnostics">
       <li v-for="(diagnostic, index) in diagnostics" :key="index">
         <oc-button
           appearance="raw"
@@ -154,7 +149,7 @@
 <script lang="ts" setup>
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, unref, watch } from 'vue'
 import { useGettext } from 'vue3-gettext'
-import { Resource, SpaceResource, urlJoin } from '@ownclouders/web-client'
+import { Resource, SpaceResource, urlJoin } from '@opencloud-eu/web-client'
 import {
   AppConfigObject,
   useAuthStore,
@@ -163,7 +158,7 @@ import {
   useFileActions,
   useMessages,
   useRouter
-} from '@ownclouders/web-pkg'
+} from '@opencloud-eu/web-pkg'
 import type { TypstDiagnostic } from './helpers/typst'
 import { isFontFile, listProjectFiles, parentPath } from './helpers/projectFiles'
 import { encodePath } from './helpers/paths'
@@ -172,7 +167,7 @@ import { parseRange } from './helpers/diagnostics'
 
 // This component must stay in the entry chunk (the AppWrapper inspects its props
 // and emits), but CodeMirror and typst.ts are only loaded once a file is opened,
-// so they don't weigh on every oCIS page load.
+// so they don't weigh on every OpenCloud page load.
 const TypstEditorPane = defineAsyncComponent(() => import('./components/TypstEditorPane.vue'))
 const TypstPreviewPane = defineAsyncComponent(() => import('./components/TypstPreviewPane.vue'))
 const typst = () => import('./helpers/typst')
@@ -421,7 +416,7 @@ const download = (files: { name: string; content: Blob }[]) => {
   }
 }
 
-// Opens a saved file with the app oCIS uses for it (e.g. its PDF viewer, or the
+// Opens a saved file with the app OpenCloud uses for it (e.g. its PDF viewer, or the
 // image preview, which can also step through the other pages). The route keeps
 // this editor as its context, so closing that app comes back here, and the
 // AppWrapper asks about unsaved changes before leaving. Without such an app,
@@ -482,8 +477,20 @@ const exportDocument = async (format: ExportFormat) => {
               last: names[names.length - 1]
             }),
       actions: [
-        { label: $gettext('Open'), onClick: () => openSaved(saved[0], files[0]) },
-        { label: $gettext('Download'), onClick: () => download(files) }
+        {
+          name: 'typst-export-open',
+          icon: 'external-link',
+          label: () => $gettext('Open'),
+          isVisible: () => true,
+          handler: () => openSaved(saved[0], files[0])
+        },
+        {
+          name: 'typst-export-download',
+          icon: 'download',
+          label: () => $gettext('Download'),
+          isVisible: () => true,
+          handler: () => download(files)
+        }
       ]
     })
   } catch (e) {
@@ -539,16 +546,42 @@ onBeforeUnmount(() => {
 .typst-editor {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  height: 100%;
 }
 
 .typst-editor-toolbar {
+  display: flex;
   flex: 0 0 auto;
-  border-bottom: 1px solid var(--oc-color-border);
-  background-color: var(--oc-color-background-default);
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--oc-role-outline-variant);
+  background-color: var(--oc-role-surface);
 }
 
 .typst-editor-toolbar-actions {
-  gap: var(--oc-space-small);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.typst-editor-status {
+  font-size: 0.875em;
+  color: var(--oc-role-on-surface-variant);
+}
+
+.typst-editor-export-item {
+  border-radius: 4px;
+}
+
+.typst-editor-export-item:hover {
+  background-color: var(--oc-role-surface-container-high);
+}
+
+.typst-editor-export-item-button {
+  width: 100%;
+  padding: 4px;
 }
 
 .typst-editor-body {
@@ -570,7 +603,7 @@ onBeforeUnmount(() => {
   position: relative;
   z-index: 1;
   width: 1px;
-  background-color: var(--oc-color-border);
+  background-color: var(--oc-role-outline-variant);
   cursor: col-resize;
   touch-action: none;
 }
@@ -585,8 +618,8 @@ onBeforeUnmount(() => {
 .typst-editor-splitter:focus-visible,
 .typst-editor-body-resizing .typst-editor-splitter {
   outline: none;
-  box-shadow: 0 0 0 1px var(--oc-color-swatch-primary-default);
-  background-color: var(--oc-color-swatch-primary-default);
+  box-shadow: 0 0 0 1px var(--oc-role-secondary);
+  background-color: var(--oc-role-secondary);
 }
 
 /* keeps the editor from selecting text while dragging over it */
@@ -606,12 +639,13 @@ onBeforeUnmount(() => {
 .typst-editor-diagnostics {
   flex: 0 0 auto;
   max-height: 25%;
+  margin: 0;
+  padding: 8px;
   overflow: auto;
   list-style: none;
-  border-top: 1px solid var(--oc-color-border);
-  /* oCIS sets `font-family: var(--oc-font-family)` on every element */
-  --oc-font-family: Consolas, 'Liberation Mono', Menlo, monospace;
-  font-size: var(--oc-font-size-small);
+  border-top: 1px solid var(--oc-role-outline-variant);
+  font-family: Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.8125rem;
 }
 
 .typst-editor-diagnostic {
@@ -619,19 +653,12 @@ onBeforeUnmount(() => {
 }
 
 .typst-editor-diagnostic-error .typst-editor-diagnostic-location {
-  color: var(--oc-color-swatch-danger-default);
+  color: var(--oc-role-error);
 }
 
 .typst-editor-diagnostic-warning .typst-editor-diagnostic-location {
-  color: var(--oc-color-swatch-warning-default);
-}
-</style>
-
-<style>
-/* oCIS renders notifications outside the app, so this can't be scoped; :has()
-   limits it to while the editor is open. Spaces out the "Open" and
-   "Download" actions of the export notification. */
-body:has(.typst-editor) .oc-notification-message-actions {
-  gap: var(--oc-space-medium);
+  /* the OpenCloud theme has no warning color; OpenCloud sets `color-scheme`
+     on the root element, which picks the side of light-dark() */
+  color: light-dark(#b45309, #fbbf24);
 }
 </style>

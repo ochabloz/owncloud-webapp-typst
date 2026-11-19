@@ -1,0 +1,9 @@
+# What the Typst app needs on top of OpenCloud's default CSP (OpenCloud merges
+# this file into its defaults):
+# - 'wasm-unsafe-eval' lets the browser instantiate the Typst compiler/renderer wasm
+# - packages.typst.org serves `#import "@preview/..."` packages
+directives:
+  connect-src:
+    - 'https://packages.typst.org/'
+  script-src:
+    - "'wasm-unsafe-eval'"

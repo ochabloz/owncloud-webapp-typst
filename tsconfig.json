@@ -1,5 +1,5 @@
 {
-  "extends": "@ownclouders/tsconfig",
+  "extends": "@opencloud-eu/tsconfig",
   "compilerOptions": {
     "types": ["vitest/globals"]
   }

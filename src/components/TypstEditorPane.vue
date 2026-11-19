@@ -19,7 +19,7 @@ import { autocompletion } from '@codemirror/autocomplete'
 import { linter, type Diagnostic } from '@codemirror/lint'
 import { tags } from '@lezer/highlight'
 import { typst_lezer, typstLezerDiagnostics, typstTags } from 'codemirror-lang-typst/lezer'
-import { useThemeStore } from '@ownclouders/web-pkg'
+import { useThemeStore } from '@opencloud-eu/web-pkg'
 import type { TypstDiagnostic } from '../helpers/typst'
 import { parseRange, type TextPosition } from '../helpers/diagnostics'
 import { pathCompletionSource } from '../helpers/pathCompletion'
@@ -52,24 +52,22 @@ const buildTheme = () =>
     {
       '&': {
         height: '100%',
-        color: 'var(--oc-color-text-default)',
-        backgroundColor: 'var(--oc-color-background-default)'
+        color: 'var(--oc-role-on-surface)',
+        backgroundColor: 'var(--oc-role-surface)'
       },
-      // oCIS sets `font-family: var(--oc-font-family)` on every element, which
-      // beats an inherited font-family, so the variable is set instead
       '.cm-scroller, .cm-tooltip-autocomplete': {
-        '--oc-font-family': 'Consolas, "Liberation Mono", Menlo, monospace'
+        fontFamily: 'Consolas, "Liberation Mono", Menlo, monospace'
       },
       '.cm-scroller': {
         lineHeight: '1.5',
         overflow: 'auto'
       },
       '.cm-gutters': {
-        backgroundColor: 'var(--oc-color-background-muted)',
-        color: 'var(--oc-color-text-muted)',
+        backgroundColor: 'var(--oc-role-surface-container)',
+        color: 'var(--oc-role-on-surface-variant)',
         border: 'none'
       },
-      '.cm-content': { caretColor: 'var(--oc-color-text-default)' },
+      '.cm-content': { caretColor: 'var(--oc-role-on-surface)' },
       '&.cm-focused': { outline: 'none' }
     },
     { dark: isDark() }

@@ -1,5 +1,7 @@
 node_modules
 dist
+# module federation build cache (@opencloud-eu/extension-sdk)
+.__mf__temp/
 
 *.log
 .DS_Store

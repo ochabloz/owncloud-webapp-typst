@@ -1,16 +1,17 @@
 # Web App Typst
 
-Typst editor for ownCloud Infinite Scale.
+Typst editor for OpenCloud.
 Live preview. Autocomplete. PDF, PNG and SVG export. Runs in the browser. No server needed.
 
 ## Install from release
 
 Grab `typst-x.y.z.zip` from Releases.
-Unzip it in your oCIS apps folder.
+Unzip it in your OpenCloud apps folder.
 That's whatever `WEB_ASSET_APPS_PATH` points to.
+Default is `/var/lib/opencloud/web/assets/apps`.
 
 ```bash
-unzip typst-x.y.z.zip -d /var/lib/ocis/apps/
+unzip typst-x.y.z.zip -d /var/lib/opencloud/web/assets/apps/
 ```
 
 You get `apps/typst/`. 
@@ -30,30 +31,35 @@ pnpm build
 ```
 
 Output is `dist/`.
-Copy it to your oCIS apps folder as `typst`.
+Copy it to your OpenCloud apps folder as `typst`.
 
 ```bash
-cp -r dist /var/lib/ocis/apps/typst
+cp -r dist /var/lib/opencloud/web/assets/apps/typst
 ```
 
 Now do the CSP thing below.
 
 ## CSP thing
 
-Edit your CSP file (`PROXY_CSP_CONFIG_FILE_LOCATION`).
-No CSP file yet? Copy `dev/docker/ocis/csp.yaml`.
-Add these two lines:
+OpenCloud merges your CSP file (`PROXY_CSP_CONFIG_FILE_LOCATION`) into its defaults.
+No CSP file yet? Copy `dev/docker/opencloud/csp.yaml` and point the variable at it.
+Already have one? Add these two lines:
 
 ```yaml
   connect-src:
     - 'https://packages.typst.org/'
   script-src:
-    - '''wasm-unsafe-eval'''
+    - "'wasm-unsafe-eval'"
 ```
 
-Restart oCIS.
+Restart OpenCloud.
 
 Open a `.typ` file.
+
+## Updating
+
+Swap the `typst` folder for the new one and restart OpenCloud.
+OpenCloud reads the app's `manifest.json` only at startup, and the entry file name changes with every build.
 
 ## Dev
 
@@ -89,7 +95,7 @@ pnpm test:unit
 
 ## License
 
-Apache-2.0. Started from [owncloud/web-app-skeleton](https://github.com/owncloud/web-app-skeleton).
+Apache-2.0. Started from [owncloud/web-app-skeleton](https://github.com/owncloud/web-app-skeleton), ported to OpenCloud.
 
 Bundled stuff has its own licenses. See `THIRD-PARTY-NOTICES.txt` in the build.
 License texts live in `licenses/`.
