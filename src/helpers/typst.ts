@@ -1,9 +1,14 @@
 import { createTypstRenderer, type TypstRenderer } from '@myriaddreamin/typst.ts/renderer'
 import rendererWasmUrl from '@myriaddreamin/typst-ts-renderer/wasm?url'
-import type { ProjectAccess, TypstWorkerRequest, TypstWorkerResponse } from './typst.worker'
+import type {
+  ProjectAccess,
+  ProjectInfo,
+  TypstWorkerRequest,
+  TypstWorkerResponse
+} from './typst.worker'
 import { splitSvgPages } from './exportFiles'
 
-export type { ProjectAccess }
+export type { ProjectAccess, ProjectInfo }
 
 export interface TypstDiagnostic {
   path: string
@@ -104,8 +109,10 @@ export const renderToCanvas = async (container: HTMLElement, artifact: Uint8Arra
 
 // Points the compiler at the document's folder in WebDAV. Files (imports,
 // images, bibliographies, ...) are fetched when the compiler first reads them;
-// calling this again forgets them, so changed files are fetched anew.
-export const setProject = (access: ProjectAccess) => request<void>({ type: 'setProject', access })
+// calling this again forgets them, so changed files are fetched anew. Resolves
+// with the families of the fonts then loaded.
+export const setProject = (access: ProjectAccess) =>
+  request<ProjectInfo>({ type: 'setProject', access })
 
 // Typst's CLI exports PNGs at 144 pixels per inch by default, i.e. 2 per point
 const PNG_PIXEL_PER_PT = 2

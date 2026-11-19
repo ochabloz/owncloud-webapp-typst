@@ -5,7 +5,8 @@
 import {
   createTypstCompiler,
   createTypstFontBuilder,
-  type TypstCompiler
+  type TypstCompiler,
+  type TypstFontBuilder
 } from '@myriaddreamin/typst.ts/compiler'
 import { FetchPackageRegistry } from '@myriaddreamin/typst.ts/fs/package'
 import {
@@ -50,8 +51,17 @@ export type TypstWorkerRequest =
     }
   | { type: 'setProject'; access: ProjectAccess }
 
+// What `setProject` reports back: the family names of every loaded font, for
+// completion in `font:` arguments.
+export interface ProjectInfo {
+  fontFamilies: string[]
+}
+
 export type TypstWorkerResponse =
-  | { id: number; result?: { artifact?: Uint8Array; diagnostics: TypstDiagnostic[] } }
+  | {
+      id: number
+      result?: { artifact?: Uint8Array; diagnostics: TypstDiagnostic[] } | ProjectInfo
+    }
   | { id: number; error: string }
 
 // Typst sources by path, to look up the text a diagnostic points at
@@ -121,29 +131,82 @@ const fetchFont = async (url: string, headers: Record<string, string> = {}) => {
   return new Uint8Array(await response.arrayBuffer())
 }
 
+const createFontBuilder = async () => {
+  const builder = createTypstFontBuilder()
+  await builder.init({ getModule: () => compilerWasmUrl })
+  return builder
+}
+
+// `getFontInfo` is typed as an empty object; at runtime it lists each face of
+// the file (a collection has several).
+interface FontFileInfo {
+  info: { family: string }[]
+}
+
+const familiesOf = async (builder: TypstFontBuilder, data: Uint8Array) =>
+  ((await builder.getFontInfo(data)) as FontFileInfo).info.map(({ family }) => family)
+
+let bundledFamilies: Promise<string[]> | undefined
+
+// The bundled fonts never change, so their families are read once per worker.
+const loadBundledFamilies = () => {
+  if (!bundledFamilies) {
+    bundledFamilies = (async () => {
+      const builder = await createFontBuilder()
+      const families: string[] = []
+      for (const url of fontUrls) {
+        families.push(...(await familiesOf(builder, await fetchFont(url))))
+      }
+      return families
+    })()
+    bundledFamilies.catch(() => {
+      bundledFamilies = undefined
+    })
+  }
+  return bundledFamilies
+}
+
 let hasProjectFonts = false
 
 // The compiler only takes a whole new set of fonts, so the bundled ones are
 // added again (from the browser cache) next to the folder's. A font that can't
 // be loaded is skipped: the document then reports its family as unknown.
+// Returns the families of the folder's fonts.
 const loadProjectFonts = async (compiler: TypstCompiler, access: ProjectAccess) => {
   if (!access.fontPaths.length && !hasProjectFonts) {
-    return
+    return []
   }
-  const builder = createTypstFontBuilder()
-  await builder.init({ getModule: () => compilerWasmUrl })
+  const builder = await createFontBuilder()
   for (const url of fontUrls) {
     await builder.addFontData(await fetchFont(url))
   }
+  const families: string[] = []
   for (const path of access.fontPaths) {
     try {
-      await builder.addFontData(await fetchFont(access.baseUrl + encodePath(path), access.headers))
+      const data = await fetchFont(access.baseUrl + encodePath(path), access.headers)
+      families.push(...(await familiesOf(builder, data)))
+      await builder.addFontData(data)
     } catch (e) {
       console.warn(`Failed to load font ${path}:`, e)
     }
   }
   await builder.build((fonts) => Promise.resolve(compiler.setFonts(fonts)))
   hasProjectFonts = access.fontPaths.length > 0
+  return families
+}
+
+// Font completion is a nicety: without the bundled families, it still offers
+// the folder's.
+const listFontFamilies = async (projectFamilies: string[]) => {
+  let bundled: string[] = []
+  try {
+    bundled = await loadBundledFamilies()
+  } catch (e) {
+    console.warn('Failed to read the bundled font families:', e)
+  }
+  return [...new Set([...bundled, ...projectFamilies])].sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: 'base' })
+  )
 }
 
 const textAt = (path: string, range: string) => {
@@ -224,15 +287,17 @@ const handle = async (request: TypstWorkerRequest) => {
         compiler.unmapShadow(path)
       }
       sources.clear()
-      await loadProjectFonts(compiler, request.access)
-      return
+      return {
+        fontFamilies: await listFontFamilies(await loadProjectFonts(compiler, request.access))
+      }
   }
 }
 
 // The artifact's buffer is handed over instead of copied, unless the array is
 // only a view into a larger buffer (e.g. wasm memory), which must stay here.
 const transferables = (response: TypstWorkerResponse): Transferable[] => {
-  const artifact = 'result' in response ? response.result?.artifact : undefined
+  const result = 'result' in response ? response.result : undefined
+  const artifact = result && 'artifact' in result ? result.artifact : undefined
   if (artifact && artifact.byteOffset === 0 && artifact.byteLength === artifact.buffer.byteLength) {
     return [artifact.buffer as ArrayBuffer]
   }

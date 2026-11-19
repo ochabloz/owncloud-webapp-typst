@@ -1,6 +1,6 @@
 {
   "name": "web-app-typst",
-  "version": "0.6.0",
+  "version": "0.8.0",
   "description": "Typst editor with live preview and PDF export for OpenCloud.",
   "license": "Apache-2.0",
   "type": "module",

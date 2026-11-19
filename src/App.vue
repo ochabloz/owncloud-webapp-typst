@@ -95,6 +95,7 @@
           :is-read-only="isReadOnly"
           :diagnostics="mainFileDiagnostics"
           :project-files="projectFiles"
+          :font-families="fontFamilies"
           @update:model-value="onInput"
         />
       </div>
@@ -279,6 +280,7 @@ const isCompiling = ref(false)
 const isExporting = ref(false)
 const isLoadingProjectFiles = ref(false)
 const projectFiles = ref<string[]>([])
+const fontFamilies = ref<string[]>([])
 
 const mainFilePath = computed(() => `/${resource.name}`)
 
@@ -388,11 +390,12 @@ const reloadProjectFiles = async () => {
   }
   try {
     const { setProject } = await typst()
-    await setProject({
+    const project = await setProject({
       baseUrl: unref(projectBaseUrl),
       headers: projectHeaders(),
       fontPaths: unref(projectFiles).filter(isFontFile)
     })
+    fontFamilies.value = project.fontFamilies
   } catch (e) {
     console.error(e)
     showErrorMessage({
