@@ -23,6 +23,7 @@ import { useThemeStore } from '@ownclouders/web-pkg'
 import type { TypstDiagnostic } from '../helpers/typst'
 import { parseRange, type TextPosition } from '../helpers/diagnostics'
 import { pathCompletionSource } from '../helpers/pathCompletion'
+import { fontCompletionSource } from '../helpers/fontCompletion'
 
 interface Props {
   modelValue: string
@@ -31,11 +32,19 @@ interface Props {
   diagnostics?: TypstDiagnostic[]
   // files of the document's folder (e.g. `/chapters/intro.typ`), for path completion
   projectFiles?: string[]
+  // family names of the loaded fonts, for completion in `font:` arguments
+  fontFamilies?: string[]
 }
 interface Emits {
   (e: 'update:modelValue', value: string): void
 }
-const { modelValue, isReadOnly = false, diagnostics = [], projectFiles = [] } = defineProps<Props>()
+const {
+  modelValue,
+  isReadOnly = false,
+  diagnostics = [],
+  projectFiles = [],
+  fontFamilies = []
+} = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 const themeStore = useThemeStore()
@@ -160,7 +169,10 @@ const applyDiagnostics = () => {
 
 // created once: the autocompletion matches sources by identity, so a new
 // function per lookup would discard every result
-const pathCompletionData = [{ autocomplete: pathCompletionSource(() => projectFiles) }]
+const completionData = [
+  { autocomplete: pathCompletionSource(() => projectFiles) },
+  { autocomplete: fontCompletionSource(() => fontFamilies) }
+]
 
 const buildReadOnly = () => [
   EditorState.readOnly.of(isReadOnly),
@@ -184,8 +196,9 @@ onMounted(() => {
         Prec.high(syntaxHighlighting(darkHighlightStyle)),
         // built-in functions and their parameters, symbols, labels and the
         // document's own `let` bindings, plus project files in path arguments
+        // and loaded font families in `font:` arguments
         autocompletion(),
-        EditorState.languageData.of(() => pathCompletionData),
+        EditorState.languageData.of(() => completionData),
         compilerDiagnostics,
         compilerLinter,
         EditorView.lineWrapping,

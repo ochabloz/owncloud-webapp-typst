@@ -80,6 +80,7 @@ Imports from the same folder work. Subfolders too, 3 levels.
 `@preview` packages work.
 `../` imports don't.
 Fonts (`.ttf`, `.otf`, `.ttc`, `.otc`) in the folder or its subfolders are loaded. Prefer static fonts: variable ones may only give their default weight.
+Their family names, and those of the bundled fonts, are completed in `font:` arguments.
 
 ## Tests
 
