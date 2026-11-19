@@ -79,7 +79,7 @@ First load is big. About 11 MB compiler, 8 MB fonts. Cached after.
 Imports from the same folder work. Subfolders too, 3 levels.
 `@preview` packages work.
 `../` imports don't.
-Custom fonts don't.
+Fonts (`.ttf`, `.otf`, `.ttc`, `.otc`) in the folder or its subfolders are loaded. Prefer static fonts: variable ones may only give their default weight.
 
 ## Tests
 

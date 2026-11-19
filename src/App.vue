@@ -20,7 +20,7 @@
       <div class="oc-flex oc-flex-middle typst-editor-toolbar-actions">
         <span class="typst-editor-status oc-text-muted oc-text-small">{{ statusText }}</span>
         <oc-button
-          v-oc-tooltip="$gettext('Reload images and included files from this folder')"
+          v-oc-tooltip="$gettext('Reload images, fonts and included files from this folder')"
           class="typst-editor-reload"
           appearance="outline"
           size="small"
@@ -165,7 +165,7 @@ import {
   useRouter
 } from '@ownclouders/web-pkg'
 import type { TypstDiagnostic } from './helpers/typst'
-import { listProjectFiles, parentPath } from './helpers/projectFiles'
+import { isFontFile, listProjectFiles, parentPath } from './helpers/projectFiles'
 import { encodePath } from './helpers/paths'
 import { exportFileNames, type ExportFormat } from './helpers/exportFiles'
 import { parseRange } from './helpers/diagnostics'
@@ -383,24 +383,29 @@ watch(
 
 const reloadProjectFiles = async () => {
   isLoadingProjectFiles.value = true
-  // the file list only feeds path completion, so the preview doesn't wait for it
-  listProjectFiles(clientService.webdav, space, resource)
-    .then((files) => {
-      projectFiles.value = files
-    })
-    .catch(console.error)
-    .finally(() => {
-      isLoadingProjectFiles.value = false
-    })
+  // the fonts in the folder are loaded along with it, so the file list (which
+  // also feeds path completion) comes first. If listing fails, the last list is
+  // kept and the document still compiles.
+  try {
+    projectFiles.value = await listProjectFiles(clientService.webdav, space, resource)
+  } catch (e) {
+    console.error(e)
+  }
   try {
     const { setProject } = await typst()
-    await setProject({ baseUrl: unref(projectBaseUrl), headers: projectHeaders() })
+    await setProject({
+      baseUrl: unref(projectBaseUrl),
+      headers: projectHeaders(),
+      fontPaths: unref(projectFiles).filter(isFontFile)
+    })
   } catch (e) {
     console.error(e)
     showErrorMessage({
       title: $gettext('Failed to load files from this folder'),
       errors: [e as Error]
     })
+  } finally {
+    isLoadingProjectFiles.value = false
   }
   await compile(currentContent ?? '')
 }
@@ -416,16 +421,18 @@ const download = (files: { name: string; content: Blob }[]) => {
   }
 }
 
-// Opens a saved file in a new tab with the app oCIS uses for it (e.g. its PDF
-// viewer, or the image preview, which can also step through the other pages).
-// Without such an app, the file is downloaded instead.
-const openInNewTab = (saved: Resource, file: { name: string; content: Blob }) => {
+// Opens a saved file with the app oCIS uses for it (e.g. its PDF viewer, or the
+// image preview, which can also step through the other pages). The route keeps
+// this editor as its context, so closing that app comes back here, and the
+// AppWrapper asks about unsaved changes before leaving. Without such an app,
+// the file is downloaded instead.
+const openSaved = (saved: Resource, file: { name: string; content: Blob }) => {
   const route = getDefaultAction({ space, resources: [saved] })?.route?.({
     space,
     resources: [saved]
   })
   if (route) {
-    window.open(router.resolve(route).href, '_blank')
+    router.push(route)
   } else {
     download([file])
   }
@@ -475,7 +482,7 @@ const exportDocument = async (format: ExportFormat) => {
               last: names[names.length - 1]
             }),
       actions: [
-        { label: $gettext('Open'), onClick: () => openInNewTab(saved[0], files[0]) },
+        { label: $gettext('Open'), onClick: () => openSaved(saved[0], files[0]) },
         { label: $gettext('Download'), onClick: () => download(files) }
       ]
     })

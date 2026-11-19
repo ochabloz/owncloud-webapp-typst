@@ -1,6 +1,6 @@
 import { Resource, SpaceResource } from '@ownclouders/web-client'
 import { WebDAV } from '@ownclouders/web-client/webdav'
-import { listProjectFiles, parentPath } from '../../src/helpers/projectFiles'
+import { isFontFile, listProjectFiles, parentPath } from '../../src/helpers/projectFiles'
 
 const file = (path: string, size = 10) =>
   ({
@@ -32,6 +32,18 @@ describe('parentPath', () => {
   })
   it('returns the root for files at the top level', () => {
     expect(parentPath('/main.typ')).toBe('/')
+  })
+})
+
+describe('isFontFile', () => {
+  it('accepts the font formats Typst reads, in any case', () => {
+    expect(isFontFile('/fonts/NotoSans-Regular.ttf')).toBe(true)
+    expect(isFontFile('/Inter.OTF')).toBe(true)
+    expect(isFontFile('/Noto.ttc')).toBe(true)
+  })
+  it('rejects other files, including web fonts', () => {
+    expect(isFontFile('/fonts/Inter.woff2')).toBe(false)
+    expect(isFontFile('/ttf.typ')).toBe(false)
   })
 })
 

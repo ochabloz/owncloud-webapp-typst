@@ -2,7 +2,11 @@
 // wasm, and the files it reads, `@preview/...` packages as well as the
 // document's own folder, are downloaded with synchronous XMLHttpRequests,
 // which would freeze the whole oCIS page.
-import { createTypstCompiler, type TypstCompiler } from '@myriaddreamin/typst.ts/compiler'
+import {
+  createTypstCompiler,
+  createTypstFontBuilder,
+  type TypstCompiler
+} from '@myriaddreamin/typst.ts/compiler'
 import { FetchPackageRegistry } from '@myriaddreamin/typst.ts/fs/package'
 import {
   loadFonts,
@@ -25,11 +29,14 @@ const fontUrls = Object.values(
   })
 )
 
-// Where and how the document's folder is fetched: its WebDAV URL, and the
-// headers that authenticate the request (they change when tokens are renewed).
+// Where and how the document's folder is fetched: its WebDAV URL, the headers
+// that authenticate the request (they change when tokens are renewed), and the
+// font files in it, which are loaded up front since Typst looks fonts up by
+// family name, not by path.
 export interface ProjectAccess {
   baseUrl: string
   headers: Record<string, string>
+  fontPaths: string[]
 }
 
 export type TypstWorkerRequest =
@@ -104,6 +111,39 @@ const loadCompiler = () => {
     })
   }
   return compilerPromise
+}
+
+const fetchFont = async (url: string, headers: Record<string, string> = {}) => {
+  const response = await fetch(url, { headers, cache: 'no-cache' })
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+  return new Uint8Array(await response.arrayBuffer())
+}
+
+let hasProjectFonts = false
+
+// The compiler only takes a whole new set of fonts, so the bundled ones are
+// added again (from the browser cache) next to the folder's. A font that can't
+// be loaded is skipped: the document then reports its family as unknown.
+const loadProjectFonts = async (compiler: TypstCompiler, access: ProjectAccess) => {
+  if (!access.fontPaths.length && !hasProjectFonts) {
+    return
+  }
+  const builder = createTypstFontBuilder()
+  await builder.init({ getModule: () => compilerWasmUrl })
+  for (const url of fontUrls) {
+    await builder.addFontData(await fetchFont(url))
+  }
+  for (const path of access.fontPaths) {
+    try {
+      await builder.addFontData(await fetchFont(access.baseUrl + encodePath(path), access.headers))
+    } catch (e) {
+      console.warn(`Failed to load font ${path}:`, e)
+    }
+  }
+  await builder.build((fonts) => Promise.resolve(compiler.setFonts(fonts)))
+  hasProjectFonts = access.fontPaths.length > 0
 }
 
 const textAt = (path: string, range: string) => {
@@ -184,6 +224,7 @@ const handle = async (request: TypstWorkerRequest) => {
         compiler.unmapShadow(path)
       }
       sources.clear()
+      await loadProjectFonts(compiler, request.access)
       return
   }
 }

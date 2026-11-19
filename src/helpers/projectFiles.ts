@@ -9,6 +9,9 @@ const MAX_FOLDERS = 100
 
 export const parentPath = (path: string) => path.substring(0, path.lastIndexOf('/')) || '/'
 
+// the font formats Typst reads (it doesn't support WOFF)
+export const isFontFile = (path: string) => /\.(ttf|otf|ttc|otc)$/i.test(path)
+
 /**
  * Lists the files next to (and below) the main document, as paths relative to
  * the document's folder (e.g. `/chapters/intro.typ`), which is how Typst
